@@ -3,45 +3,46 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// Kategorien mit der korrekten MediathekView-Suchsyntax (Mehrere Begriffe mit Leerzeichen oder Komma)
+// Exakte Suchbegriffe für die Mediathek-API
 const CATEGORY_MAP = {
-    "Krimi & Tatort": "Tatort Polizeiruf SOKO Wilsberg",
-    "Dokumentation": "Doku Reportage Terra X Wissen Natur",
-    "Talk & Show": "Lanz Miosga Maischberger Illner",
-    "Comedy & Satire": "heute-show extra 3 Anstalt"
+    "Krimi & Tatort": "Tatort",
+    "Dokumentation": "Doku",
+    "Talk & Show": "Lanz",
+    "Comedy & Satire": "heute-show"
 };
 
 const ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiI+PHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMjAiIGZpbGw9IiMwZjE3MmEiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLCAxMCkiIGZpbGw9IiMyMmM1NWUiPjxwYXRoIGQ9Ik0yNTYsNjAgQzI3MCwxNDAgMzEwLDIxMCAzODAsMjQwIEMzMTAsMjUwIDI4NSwyOTAgMjc1LDM2MCBDMjY1LDMxMCAyNjAsMjkwIDIzNywzNjAgQzIyNywyOTAgMjAyLDI1MCAxMzIsMjQwIEMyMDIsMjEwIDI0MiwxNDAgMjU2LDYwIFoiLz48L2c+PC9zdmc+";
 
-// API-Funktion mit direkter Query-Syntax
+// API-Funktion mit exaktem String-Payload (wie von der API gefordert)
 async function fetchItems(genre, channel) {
-    let queryParts = [];
+    let queries = [];
 
-    // Sender-Selektor (z.B. !ard)
+    const searchTerm = (genre && CATEGORY_MAP[genre]) ? CATEGORY_MAP[genre] : "";
+    if (searchTerm) {
+        queries.push({ fields: ["title", "topic"], query: searchTerm });
+    }
+
     if (channel && channel !== "all") {
-        queryParts.push(`!${channel.toLowerCase()}`);
+        queries.push({ fields: ["channel"], query: channel.toLowerCase() });
     }
 
-    // Suchbegriff-Selektor (z.B. #Tatort)
-    if (genre && CATEGORY_MAP[genre]) {
-        queryParts.push(`#${CATEGORY_MAP[genre]}`);
+    // Fallback falls gar kein Filter aktiv ist
+    if (queries.length === 0) {
+        queries.push({ fields: ["title"], query: "a" });
     }
-
-    // Wenn nichts gewählt wurde, Standard-Abfrage
-    const finalQuery = queryParts.length > 0 ? queryParts.join(" ") : "a";
 
     const payload = {
-        queries: [
-            { fields: ["title", "topic", "channel"], query: finalQuery }
-        ],
+        queries: queries,
         sortBy: "timestamp",
         sortOrder: "desc",
         size: 50
     };
 
     try {
-        const res = await axios.post("https://mediathekviewweb.de/api/query", payload, {
-            headers: { "Content-Type": "application/json" }
+        // WICHTIG: Wir übergeben JSON.stringify als String und text/plain / application/json Header, 
+        // damit die MediathekView-API den Request fehlerfrei parst.
+        const res = await axios.post("https://mediathekviewweb.de/api/query", JSON.stringify(payload), {
+            headers: { "Content-Type": "text/plain" }
         });
         return res.data?.result?.results || [];
     } catch (e) {
@@ -54,11 +55,11 @@ async function fetchItems(genre, channel) {
 app.get("/manifest.json", (req, res) => {
     res.json({
         id: "org.mediathek.pro", 
-        version: "1.1.0", 
+        version: "1.2.0", 
         name: "MediathekView Pro",
         resources: ["catalog", "meta", "stream"], 
         types: ["movie"],
-        catalogs: ["ard", "zdf", "arte", "3sat"].map(ch => ({
+        catalogs: ["ard", "zdf", "arte"].map(ch => ({
             type: "movie", 
             id: `cat_${ch}`, 
             name: `${ch.toUpperCase()} Mediathek`,
