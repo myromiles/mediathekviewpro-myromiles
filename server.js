@@ -4,100 +4,33 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// 1. CORS-HEADER (Behebt NetworkError & Preflight-Anfragen in Stremio)
+// 1. CORS-HEADER
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
   next();
 });
 
-// 2. KATEGORIEN & SMART-TAGS (Suche & Dropdowns)
-const CATEGORY_TAGS = {
+// Standard-Tags
+const DEFAULT_CATEGORY_TAGS = {
   "Talk & Polit-Shows": ["Markus Lanz", "Caren Miosga", "Maischberger", "Hart aber fair", "maybrit illner"],
   "Satire & Comedy": ["heute-show", "ZDF Magazin Royale", "extra 3", "Die Anstalt"],
   "Krimi & Tatort": ["Tatort", "Polizeiruf", "SOKO", "Der Alte", "Wilsberg"],
   "Dokumentation & Wissen": ["Doku", "Reportage", "Terra X", "Quarks", "Weltspiegel"],
-  "Nachrichten & Magazine": ["tagesschau", "tagesthemen", "heute journal", "brisant"],
-  "Sport & Event": ["Sportschau", "sportstudio", "Fußball", "Wintersport"],
-  "Film & Serie": ["Spielfilm", "Drama", "Komödie", "Fernsehfilm"],
-  "Kinder & Familie": ["Sendung mit der Maus", "Löwenzahn", "logo!", "Checker Tobi"]
+  "Nachrichten & Magazine": ["tagesschau", "tagesthemen", "heute journal", "brisant"]
 };
 
-const GENRE_LIST = Object.keys(CATEGORY_TAGS);
-
-// ICON (Clean SVG Base64)
+// ICON
 const MYRO_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="#0f172a"/><g transform="translate(0, 10)" fill="#22c55e"><path d="M256,60 C270,140 310,210 380,240 C310,250 285,290 275,360 C265,310 260,290 237,360 C227,290 202,250 132,240 C202,210 242,140 256,60 Z"/></g></svg>`;
 const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG).toString("base64")}`;
 
-// SENDER-LOGOS ALS FALLBACK
 const CHANNEL_LOGOS = {
   "ard": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/ARD_Logo_2019.svg/500px-ARD_Logo_2019.svg.png",
   "zdf": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/ZDF_Logo_2021.svg/500px-ZDF_Logo_2021.svg.png",
   "arte": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Arte_Logo.svg/500px-Arte_Logo.svg.png",
-  "3sat": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/3sat_Logo_2019.svg/500px-3sat_Logo_2019.svg.png",
-  "ndr": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/NDR_Logo.svg/500px-NDR_Logo.svg.png",
-  "wdr": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/WDR_Logo_2012.svg/500px-WDR_Logo_2012.svg.png",
-  "swr": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/SWR_Logo_2014.svg/500px-SWR_Logo_2014.svg.png",
-  "br": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Bayerischer_Rundfunk_Logo_2021.svg/500px-Bayerischer_Rundfunk_Logo_2021.svg.png",
-  "hr": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Hr_logo.svg/500px-Hr_logo.svg.png",
-  "mdr": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/MDR_Logo_2017.svg/500px-MDR_Logo_2017.svg.png",
-  "rbb": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Rbb_Logo_2017.svg/500px-Rbb_Logo_2017.svg.png",
-  "kika": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/KiKa_Logo_2012.svg/500px-KiKa_Logo_2012.svg.png",
-  "one": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/One_Logo_2022.svg/500px-One_Logo_2022.svg.png",
-  "zdfneo": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/ZDFneo_Logo_2021.svg/500px-ZDFneo_Logo_2021.svg.png"
-};
-
-// 3. STREMIO MANIFEST
-const MANIFEST = {
-  id: "com.myromiles.mediathekviewpro",
-  version: "4.4.0",
-  name: "MediathekViewPro",
-  description: "Deutsche öffentlich-rechtliche Mediatheken (ARD, ZDF, Arte, 3sat) direkt in Stremio streamen.",
-  icon: ADDON_ICON_BASE64,
-  resources: ["catalog", "meta", "stream"],
-  types: ["movie", "series"],
-  idPrefixes: ["mvw:"],
-  catalogs: [
-    {
-      type: "movie",
-      id: "mediathek_all",
-      name: "Mediathek: Neueste Inhalte",
-      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
-    },
-    {
-      type: "movie",
-      id: "mediathek_ard",
-      name: "ARD: Neueste Beiträge",
-      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
-    },
-    {
-      type: "movie",
-      id: "mediathek_zdf",
-      name: "ZDF: Neueste Beiträge",
-      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
-    },
-    {
-      type: "movie",
-      id: "mediathek_arte",
-      name: "Arte: Neueste Beiträge",
-      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
-    },
-    {
-      type: "movie",
-      id: "mediathek_3sat",
-      name: "3sat: Neueste Beiträge",
-      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
-    }
-  ],
-  behaviorHints: {
-    configurable: false,
-    configurationRequired: false
-  }
+  "3sat": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/3sat_Logo_2019.svg/500px-3sat_Logo_2019.svg.png"
 };
 
 // HELPER FÜR URL-ENCODING
@@ -110,90 +43,160 @@ function decodeId(id) {
   return Buffer.from(clean, "base64url").toString("utf-8");
 }
 
-// DYNAMISCHE POSTER-SUCHE
-async function getDynamicPoster(title, topic, channel) {
-  const chName = (channel || "").toLowerCase().trim();
-  let defaultPoster = ADDON_ICON_BASE64;
-  for (const [key, logo] of Object.entries(CHANNEL_LOGOS)) {
-    if (chName.includes(key)) {
-      defaultPoster = logo;
-      break;
-    }
-  }
-
-  if (!title || title.length < 3) return defaultPoster;
-
+// HILSFUNKTION: PARST DIE CONFIG AUS DER URL (z.B. /configJson/manifest.json)
+function parseConfig(configStr) {
   try {
-    const apiRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(title + " zdf ard mediathek")}&format=json`, { timeout: 3000 });
-    if (apiRes.data && apiRes.data.Image && apiRes.data.Image.length > 0) {
-      let img = apiRes.data.Image;
-      if (img.startsWith("/")) img = "https://duckduckgo.com" + img;
-      return img;
-    }
-  } catch (err) {
-    // Fallback auf Sender-Logo bei Timeout
+    if (!configStr) return getDefaultConfig();
+    return JSON.parse(Buffer.from(configStr, "base64url").toString("utf-8"));
+  } catch (e) {
+    return getDefaultConfig();
   }
-
-  return defaultPoster;
 }
 
-// 4. ROUTEN
+function getDefaultConfig() {
+  return {
+    limit: 50,
+    channels: ["ard", "zdf", "arte", "3sat"],
+    tags: Object.keys(DEFAULT_CATEGORY_TAGS).join(",")
+  };
+}
 
-// LANDINGPAGE
-app.get("/", (req, res) => {
-  const host = req.get("host");
-  const protocol = req.protocol;
-  const manifestUrl = `${protocol}://${host}/manifest.json`;
-  const stremioUrl = `stremio://${host}/manifest.json`;
+// 2. MANIFEST GENERATOR (Dynamisch basierend auf Config)
+function getManifest(configStr = "") {
+  const config = parseConfig(configStr);
+  const genreList = config.tags ? config.tags.split(",").map(t => t.trim()).filter(Boolean) : Object.keys(DEFAULT_CATEGORY_TAGS);
 
+  let catalogs = [];
+  if (config.channels.includes("all") || config.channels.length > 1) {
+    catalogs.push({
+      type: "movie",
+      id: "mediathek_all",
+      name: "Mediathek: Neueste Inhalte",
+      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: genreList }]
+    });
+  }
+
+  config.channels.forEach(ch => {
+    if (ch !== "all") {
+      catalogs.push({
+        type: "movie",
+        id: `mediathek_${ch}`,
+        name: `${ch.toUpperCase()}: Neueste Beiträge`,
+        extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: genreList }]
+      });
+    }
+  });
+
+  return {
+    id: "com.myromiles.mediathekviewpro",
+    version: "5.0.0",
+    name: "MediathekViewPro (Config)",
+    description: "Individuell konfigurierbare öffentlich-rechtliche Mediatheken für Stremio.",
+    icon: ADDON_ICON_BASE64,
+    resources: ["catalog", "meta", "stream"],
+    types: ["movie", "series"],
+    idPrefixes: ["mvw:"],
+    catalogs: catalogs,
+    behaviorHints: {
+      configurable: true,
+      configurationRequired: false
+    }
+  };
+}
+
+// 3. ROUTEN
+
+// KONFIGURATIONSMASKE (Webseite im Browser/Stremio)
+app.get("/configure", (req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`
     <!DOCTYPE html>
     <html lang="de">
     <head>
       <meta charset="UTF-8">
-      <title>MediathekViewPro API</title>
+      <title>MediathekViewPro Konfiguration</title>
       <style>
-        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-        h1 { color: #4ade80; }
-        .btn { background-color: #22c55e; color: #0f172a; font-weight: bold; padding: 15px 32px; border-radius: 8px; text-decoration: none; display: inline-block; margin-bottom: 20px; }
-        code { background-color: #1e293b; padding: 6px 12px; border-radius: 4px; color: #38bdf8; }
+        body { background: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+        h1 { color: #4ade80; text-align: center; }
+        label { display: block; margin-top: 15px; font-weight: bold; color: #38bdf8; }
+        input, textarea { width: 100%; padding: 10px; margin-top: 5px; background: #1e293b; border: 1px solid #334155; color: white; border-radius: 6px; box-sizing: border-box; }
+        .checkbox-group { display: flex; gap: 15px; margin-top: 5px; flex-wrap: wrap; }
+        .checkbox-group label { font-weight: normal; color: white; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        button { background: #22c55e; color: #0f172a; font-weight: bold; width: 100%; padding: 15px; border: none; border-radius: 8px; margin-top: 30px; font-size: 16px; cursor: pointer; }
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v4.4</h1>
-      <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
-      <p style="color:#94a3b8;">Manifest URL:</p>
-      <p><code>${manifestUrl}</code></p>
+      <h1>MediathekViewPro Konfigurator</h1>
+      <form id="configForm">
+        <label>Anzahl der Beiträge pro Liste (Limit):</label>
+        <input type="number" id="limit" value="50" min="10" max="200">
+
+        <label>Gewünschte Sender:</label>
+        <div class="checkbox-group">
+          <label><input type="checkbox" name="channel" value="ard" checked> ARD</label>
+          <label><input type="checkbox" name="channel" value="zdf" checked> ZDF</label>
+          <label><input type="checkbox" name="channel" value="arte" checked> Arte</label>
+          <label><input type="checkbox" name="channel" value="3sat" checked> 3sat</label>
+        </div>
+
+        <label>Kategorien / Such-Tags (mit Komma getrennt):</label>
+        <textarea id="tags" rows="4">Talk & Polit-Shows, Satire & Comedy, Krimi & Tatort, Dokumentation & Wissen, Nachrichten & Magazine</textarea>
+
+        <button type="button" onclick="installAddon()">In Stremio installieren</button>
+      </form>
+
+      <script>
+        function installAddon() {
+          const limit = document.getElementById('limit').value;
+          const channels = Array.from(document.querySelectorAll('input[name="channel"]:checked')).map(el => el.value);
+          const tags = document.getElementById('tags').value;
+
+          const configObj = { limit, channels, tags };
+          const configBase64 = btoa(JSON.stringify(configObj)).replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
+
+          const host = window.location.host;
+          const protocol = window.location.protocol;
+          const stremioUrl = \`stremio://\${host}/\${configBase64}/manifest.json\`;
+          
+          window.location.href = stremioUrl;
+        }
+      </script>
     </body>
     </html>
   `);
 });
 
-// MANIFEST ENDPOINT
-app.get("/manifest.json", (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.json(MANIFEST);
+// STANDARD LANDINGPAGE
+app.get("/", (req, res) => {
+  res.redirect("/configure");
 });
 
-// MEDIATHEK API FETCH LOGIK (Fehlerfrei mit text/plain und sicherem Standard)
-async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
+// MANIFEST MIT ODER OHNE CONFIG
+app.get("/:config?.?/manifest.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  const configStr = req.params.config;
+  // Wenn der erste Parameter "manifest.json" ist direkt ohne config aufrufen
+  if (configStr === "manifest.json" || !configStr) {
+    return res.json(getManifest(""));
+  }
+  res.json(getManifest(configStr));
+});
+
+// DYNAMISCHE API FETCH LOGIK
+async function fetchSmartMediathekItems(genre = "", search = "", channel = "", limit = 50) {
   let queryPayload = {
     queries: [],
     sortBy: "timestamp",
     sortOrder: "desc",
     future: false,
     offset: 0,
-    size: 100
+    size: parseInt(limit) || 50
   };
 
   if (search) {
     queryPayload.queries.push({ fields: ["title", "topic"], query: search });
-  } else if (genre && CATEGORY_TAGS[genre]) {
-    const tags = CATEGORY_TAGS[genre];
-    tags.forEach(tag => {
-      queryPayload.queries.push({ fields: ["title", "topic"], query: tag });
-    });
+  } else if (genre) {
+    queryPayload.queries.push({ fields: ["title", "topic"], query: genre });
   } else {
     queryPayload.queries.push({ fields: ["title"], query: "a" });
   }
@@ -207,10 +210,7 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
       method: "post",
       url: "https://mediathekviewweb.de/api/query",
       data: JSON.stringify(queryPayload),
-      headers: {
-        "Content-Type": "text/plain",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-      },
+      headers: { "Content-Type": "text/plain", "User-Agent": "Mozilla/5.0" },
       timeout: 10000
     });
 
@@ -218,23 +218,31 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
     const unique = new Map();
     raw.forEach(item => {
       const link = item.url_video_hd || item.url_video || item.url_video_low;
-      if (link && !unique.has(link)) {
-        unique.set(link, item);
-      }
+      if (link && !unique.has(link)) unique.set(link, item);
     });
-
     return Array.from(unique.values());
   } catch (err) {
-    console.error("Mediathek API Fehler:", err.message);
     return [];
   }
 }
 
-// KATALOG ROUTE
-app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
+// DYNAMISCHES POSTER
+async function getDynamicPoster(title, channel) {
+  const chName = (channel || "").toLowerCase().trim();
+  let defaultPoster = ADDON_ICON_BASE64;
+  for (const [key, logo] of Object.entries(CHANNEL_LOGOS)) {
+    if (chName.includes(key)) { defaultPoster = logo; break; }
+  }
+  return defaultPoster;
+}
+
+// KATALOG ROUTE (Mit Config-Auswertung)
+app.get("/:config?.?/catalog/:type/:id/:extra?.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   
   const { id } = req.params;
+  const configStr = req.params.config !== "catalog" ? req.params.config : "";
+  const config = parseConfig(configStr);
   const rawPath = decodeURIComponent(req.path);
 
   let channel = "";
@@ -252,11 +260,11 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   const searchMatch = rawPath.match(/search=([^/.]+)/);
   if (searchMatch) search = searchMatch[1];
 
-  const items = await fetchSmartMediathekItems(genre, search, channel);
+  const items = await fetchSmartMediathekItems(genre, search, channel, config.limit);
 
   const metas = await Promise.all(items.map(async item => {
     const targetUrl = item.url_video_hd || item.url_video || item.url_video_low;
-    const posterUrl = await getDynamicPoster(item.title, item.topic, item.channel);
+    const posterUrl = await getDynamicPoster(item.title, item.channel);
 
     return {
       id: encodeId(targetUrl),
@@ -273,53 +281,35 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
 });
 
 // META ROUTE
-app.get("/meta/:type/:id.json", (req, res) => {
+app.get("/:config?.?/meta/:type/:id.json", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const { id } = req.params;
-
   try {
     const originalUrl = decodeId(id);
     res.json({
       meta: {
-        id: id,
-        type: "movie",
-        name: "Mediathek Stream",
-        poster: ADDON_ICON_BASE64,
-        background: ADDON_ICON_BASE64,
+        id: id, type: "movie", name: "Mediathek Stream",
+        poster: ADDON_ICON_BASE64, background: ADDON_ICON_BASE64,
         description: `Stream-Link: ${originalUrl}\n\nKlicke unten auf den Stream, um das Video zu starten.`,
         genres: ["Mediathek"]
       }
     });
   } catch (e) {
-    res.json({
-      meta: {
-        id: id,
-        type: "movie",
-        name: "Mediathek Beitrag",
-        poster: ADDON_ICON_BASE64,
-        description: "Beitrag aus der öffentlich-rechtlichen Mediathek."
-      }
-    });
+    res.json({ meta: { id: id, type: "movie", name: "Mediathek Beitrag", poster: ADDON_ICON_BASE64, description: "Öffentlicher Stream." } });
   }
 });
 
 // STREAM ROUTE
-app.get("/stream/:type/:id.json", (req, res) => {
+app.get("/:config?.?/stream/:type/:id.json", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const { id } = req.params;
-
   try {
     const streamUrl = decodeId(id);
     if (streamUrl && streamUrl.startsWith("http")) {
-      return res.json({
-        streams: [{ name: "MediathekView", title: "Direktstream (HD)", url: streamUrl }]
-      });
+      return res.json({ streams: [{ name: "MediathekView", title: "Direktstream (HD)", url: streamUrl }] });
     }
-  } catch (e) {
-    console.error("Fehler beim Dekodieren der Stream-ID:", e);
-  }
-
+  } catch (e) {}
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Server v4.4 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Config-Server v5.0 läuft auf Port ${PORT}`));
