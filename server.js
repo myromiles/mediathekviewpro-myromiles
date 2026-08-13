@@ -4,18 +4,16 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// CORS-Header setzen
+// CORS-Header
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
+  if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
 
-// Stremio Manifest Konfiguration
+// Stremio Manifest
 const MANIFEST = {
   id: "org.mediathekviewpro.myromiles",
   version: "2.2.0",
@@ -32,24 +30,10 @@ const MANIFEST = {
       extra: [
         {
           name: "genre",
-          options: [
-            "Alle",
-            "Filme",
-            "Krimis",
-            "Dokumentationen",
-            "Satire",
-            "Sport",
-            "ARD",
-            "ZDF",
-            "Arte",
-            "3sat"
-          ],
+          options: ["Alle", "Filme", "Krimis", "Dokumentationen", "Satire", "Sport", "ARD", "ZDF", "Arte", "3sat"],
           isRequired: false
         },
-        {
-          name: "skip",
-          isRequired: false
-        }
+        { name: "skip", isRequired: false }
       ]
     }
   ]
@@ -60,11 +44,43 @@ const sendManifest = (req, res) => {
   res.json(MANIFEST);
 };
 
-// Manifest Routen
-app.get("/", sendManifest);
+// 1. Schöne Landingpage mit echtem Install-Button für den Browser
+app.get("/", (req, res) => {
+  const host = req.get("host");
+  const manifestUrl = `https://${host}/manifest.json`;
+  const stremioUrl = `stremio://${host}/manifest.json`;
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>MediathekViewPro Stremio Addon</title>
+        <style>
+          body { font-family: Arial, sans-serif; background: #0b0c10; color: #fff; text-align: center; padding: 50px; }
+          .card { background: #1f2833; max-width: 500px; margin: auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+          h1 { color: #66fcf1; }
+          .btn { display: inline-block; background: #45a29e; color: #fff; text-decoration: none; padding: 15px 30px; border-radius: 8px; font-weight: bold; margin-top: 20px; font-size: 18px; }
+          .btn:hover { background: #66fcf1; color: #0b0c10; }
+          input { width: 90%; padding: 10px; margin-top: 20px; background: #0b0c10; border: 1px solid #45a29e; color: #fff; border-radius: 4px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>MediathekViewPro Addon</h1>
+          <p>Klicke unten, um das Addon direkt in Stremio zu installieren:</p>
+          <a class="btn" href="${stremioUrl}">🚀 In Stremio Installieren</a>
+          <br><br>
+          <p style="font-size: 12px; color: #aaa;">Oder kopiere den Manifest-Link manuell:</p>
+          <input type="text" value="${manifestUrl}" readonly onclick="this.select();">
+        </div>
+      </body>
+    </html>
+  `);
+});
+
 app.get("/manifest.json", sendManifest);
 
-// KATALOG ROUTE (Fängt jetzt ALLE Varianten ab!)
+// Katalog-Route
 app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
@@ -74,12 +90,7 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], async (re
     const skip = parseInt(extra.skip, 10) || 0;
 
     let queryPayload = {
-      queries: [
-        {
-          fields: ["title", "topic"],
-          query: getSearchQueryForGenre(genre)
-        }
-      ],
+      queries: [{ fields: ["title", "topic"], query: getSearchQueryForGenre(genre) }],
       sortBy: "timestamp",
       sortOrder: "desc",
       future: false,
@@ -88,12 +99,7 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], async (re
     };
 
     if (["ARD", "ZDF", "Arte", "3sat"].includes(genre)) {
-      queryPayload.queries = [
-        {
-          fields: ["channel"],
-          query: genre
-        }
-      ];
+      queryPayload.queries = [{ fields: ["channel"], query: genre }];
     }
 
     const response = await axios.post("https://api.mediathekviewweb.de/api/v1/query", queryPayload, {
@@ -102,7 +108,6 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], async (re
     });
 
     const items = response.data?.result?.results || [];
-
     const metas = items.map((item) => {
       const videoUrl = item.url_video || item.title || "https://example.com";
       const uniqueId = `mvp:${Buffer.from(videoUrl).toString("base64")}`;
@@ -120,12 +125,11 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], async (re
 
     res.json({ metas });
   } catch (err) {
-    console.error("Katalog-Fehler:", err.message);
     res.json({ metas: [] });
   }
 });
 
-// STREAM ROUTE
+// Stream-Route
 app.get("/stream/:type/:id.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
@@ -133,19 +137,11 @@ app.get("/stream/:type/:id.json", async (req, res) => {
     const videoUrl = Buffer.from(rawId, "base64").toString("utf-8");
 
     if (videoUrl && videoUrl.startsWith("http")) {
-      res.json({
-        streams: [
-          {
-            title: "Direct HD Stream (Mediathek)",
-            url: videoUrl
-          }
-        ]
-      });
+      res.json({ streams: [{ title: "Direct HD Stream (Mediathek)", url: videoUrl }] });
     } else {
       res.json({ streams: [] });
     }
   } catch (err) {
-    console.error("Stream-Fehler:", err.message);
     res.json({ streams: [] });
   }
 });
@@ -172,6 +168,4 @@ function getSearchQueryForGenre(genre) {
   }
 }
 
-app.listen(PORT, () => {
-  console.log(`MediathekViewPro läuft auf Port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));
