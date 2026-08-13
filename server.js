@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// CORS-Header setzen (PFLICHT für Stremio)
+// 1. Strikte CORS-Header für Stremio
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -15,33 +15,33 @@ app.use((req, res, next) => {
   next();
 });
 
-// Stremio Manifest Konfiguration (Streng valide)
+// 2. Absolut valides Stremio Manifest
 const MANIFEST = {
   id: "org.mediathekviewpro.myromiles",
   version: "2.2.0",
   name: "MediathekViewPro",
-  description: "ARD, ZDF, Arte, 3sat & WDR Mediathek Addon mit Smart Categories & Endlos-Scrollen. Developed by MyroMiles.",
+  description: "ARD, ZDF, Arte & 3sat Mediathek Addon by MyroMiles.",
   resources: ["catalog", "stream"],
-  types: ["tv", "movie"],
+  types: ["movie", "series"],
   idPrefixes: ["mvp:"],
   catalogs: [
     {
-      type: "tv",
+      type: "movie",
       id: "mediathek_browse",
       name: "Mediathek (DE)",
       extra: [
         {
           name: "genre",
           options: [
-            "Neueste Beiträge",
-            "Spielfilme & Fernsehfilme",
-            "Krimis & Thriller",
+            "Alle",
+            "Filme",
+            "Krimis",
             "Dokumentationen",
-            "Satire & Comedy",
-            "Sport & Highlights",
-            "ARD Mediathek",
-            "ZDF Mediathek",
-            "Arte DE",
+            "Satire",
+            "Sport",
+            "ARD",
+            "ZDF",
+            "Arte",
             "3sat"
           ],
           isRequired: false
@@ -55,15 +55,23 @@ const MANIFEST = {
   ]
 };
 
-// 1. Hauptpfade für Stremio / Streamflix
-app.get("/", (req, res) => res.json(MANIFEST));
-app.get("/manifest.json", (req, res) => res.json(MANIFEST));
+// 3. Manifest-Funktion
+const sendManifest = (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.json(MANIFEST);
+};
 
-// 2. Katalog / Suche
+// Alle gängigen Manifest-Pfade abdecken
+app.get("/", sendManifest);
+app.get("/manifest.json", sendManifest);
+app.get("/:anything/manifest.json", sendManifest);
+
+// 4. Katalog / Suche
 app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
     const extra = req.params.extra ? parseExtraParams(req.params.extra) : {};
-    const genre = extra.genre || "Neueste Beiträge";
+    const genre = extra.genre || "Alle";
     const skip = parseInt(extra.skip, 10) || 0;
 
     let queryPayload = {
@@ -80,17 +88,11 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
       size: 50
     };
 
-    if (["ARD Mediathek", "ZDF Mediathek", "Arte DE", "3sat"].includes(genre)) {
-      const channelMap = {
-        "ARD Mediathek": "ARD",
-        "ZDF Mediathek": "ZDF",
-        "Arte DE": "Arte",
-        "3sat": "3sat"
-      };
+    if (["ARD", "ZDF", "Arte", "3sat"].includes(genre)) {
       queryPayload.queries = [
         {
           fields: ["channel"],
-          query: channelMap[genre]
+          query: genre
         }
       ];
     }
@@ -109,30 +111,28 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
       
       return {
         id: uniqueId,
-        type: "tv",
+        type: "movie",
         name: `${channelName}${item.title}`,
         poster: item.url_video_low || item.url_website || "https://images.unsplash.com/photo-1593784991095-a205069470b6?w=500",
-        description: item.description || `Sendung von ${item.channel || "Öffentlich-Rechtlichen"} (${item.duration ? Math.round(item.duration / 60) + " Min." : ""})`,
+        description: item.description || `Sendung von ${item.channel || "Öffentlich-Rechtlichen"}`,
         genres: [item.channel, genre].filter(Boolean)
       };
     });
 
-    res.setHeader("Content-Type", "application/json");
     res.json({ metas });
   } catch (err) {
     console.error("Katalog-Fehler:", err.message);
-    res.setHeader("Content-Type", "application/json");
     res.json({ metas: [] });
   }
 });
 
-// 3. Streams bereitstellen
+// 5. Stream-Route
 app.get("/stream/:type/:id.json", async (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
     const rawId = req.params.id.replace("mvp:", "");
     const videoUrl = Buffer.from(rawId, "base64").toString("utf-8");
 
-    res.setHeader("Content-Type", "application/json");
     if (videoUrl && videoUrl.startsWith("http")) {
       res.json({
         streams: [
@@ -147,19 +147,14 @@ app.get("/stream/:type/:id.json", async (req, res) => {
     }
   } catch (err) {
     console.error("Stream-Fehler:", err.message);
-    res.setHeader("Content-Type", "application/json");
     res.json({ streams: [] });
   }
 });
 
-// Hilfsfunktionen
 function parseExtraParams(extraStr) {
   const params = {};
   if (!extraStr) return params;
-  
-  // Entfernt die .json Endung falls Stremio sie am Ende der URL anhängt
   const cleanStr = extraStr.replace(/\.json$/, "");
-  
   cleanStr.split("&").forEach((pair) => {
     const [key, val] = pair.split("=");
     if (key && val) params[key] = decodeURIComponent(val);
@@ -169,16 +164,15 @@ function parseExtraParams(extraStr) {
 
 function getSearchQueryForGenre(genre) {
   switch (genre) {
-    case "Spielfilme & Fernsehfilme": return "Film Tatort Spielfilm Drama";
-    case "Krimis & Thriller": return "Krimi Tatort Polizeiruf SOKO";
-    case "Dokumentationen": return "Doku Dokumentation Reportage Geschichte";
-    case "Satire & Comedy": return "heute-show Magazin Royal Extra 3 Anstalt Comedy";
-    case "Sport & Highlights": return "Sportschau Sportstudio Fußball Bundesliga Highlights";
+    case "Filme": return "Film Tatort Spielfilm Drama";
+    case "Krimis": return "Krimi Tatort Polizeiruf SOKO";
+    case "Dokumentationen": return "Doku Dokumentation Reportage";
+    case "Satire": return "heute-show Magazin Royal Extra 3";
+    case "Sport": return "Sportschau Sportstudio Bundesliga";
     default: return "*";
   }
 }
 
-// Server starten
 app.listen(PORT, () => {
-  console.log(`MediathekViewPro v2.2.0 läuft auf Port ${PORT}`);
+  console.log(`MediathekViewPro läuft auf Port ${PORT}`);
 });
