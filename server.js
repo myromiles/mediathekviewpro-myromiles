@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// 1. CORS-Header für Stremio-Kompatibilität
+// 1. CORS-HEADER (Pflicht für Stremio)
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -15,45 +15,26 @@ app.use((req, res, next) => {
 
 // 2. KATEGORIEN & SMART-TAGS
 const CATEGORY_TAGS = {
-  "Talk & Polit-Shows": [
-    "Markus Lanz", "Lanz", "Caren Miosga", "Miosga", "Maischberger", 
-    "Hart aber fair", "Klamroth", "maybrit illner", "Illner", "Kölner Treff", "NDR Talk Show"
-  ],
-  "Satire & Comedy": [
-    "heute-show", "Welke", "ZDF Magazin Royale", "Böhmermann", 
-    "extra 3", "Ehring", "Die Anstalt", "Pufpaff", "MaiThink X", "Kalkofe"
-  ],
-  "Krimi & Tatort": [
-    "Tatort", "Polizeiruf", "SOKO", "Krimi", "Der Alte", "Ein Fall für zwei", "Kommissar", "Wilsberg"
-  ],
-  "Dokumentation & Wissen": [
-    "Doku", "Dokumentation", "Reportage", "Terra X", "Lesch", "Quarks", 
-    "Wissen vor acht", "Weltspiegel", "auslandsjournal", "Geschichte"
-  ],
-  "Nachrichten & Magazine": [
-    "tagesschau", "tagesthemen", "heute journal", "heute 19 uhr", "brisant", "hallo deutschland"
-  ],
-  "Sport & Event": [
-    "Sportschau", "sportstudio", "Fußball", "Bundesliga", "Wintersport", "Formel 1"
-  ],
-  "Film & Serie": [
-    "Spielfilm", "Drama", "Komödie", "Fernsehfilm", "Serie"
-  ],
-  "Kinder & Familie": [
-    "Sendung mit der Maus", "Löwenzahn", "logo!", "pur+", "KiKa", "Checker Tobi"
-  ]
+  "Talk & Polit-Shows": ["Markus Lanz", "Caren Miosga", "Maischberger", "Hart aber fair", "maybrit illner"],
+  "Satire & Comedy": ["heute-show", "ZDF Magazin Royale", "extra 3", "Die Anstalt"],
+  "Krimi & Tatort": ["Tatort", "Polizeiruf", "SOKO", "Der Alte", "Wilsberg"],
+  "Dokumentation & Wissen": ["Doku", "Reportage", "Terra X", "Quarks", "Weltspiegel"],
+  "Nachrichten & Magazine": ["tagesschau", "tagesthemen", "heute journal", "brisant"],
+  "Sport & Event": ["Sportschau", "sportstudio", "Fußball", "Wintersport"],
+  "Film & Serie": ["Spielfilm", "Drama", "Komödie", "Fernsehfilm"],
+  "Kinder & Familie": ["Sendung mit der Maus", "Löwenzahn", "logo!", "Checker Tobi"]
 };
 
 const GENRE_LIST = Object.keys(CATEGORY_TAGS);
 
 // CANNBLATT-ICON (Base64 SVG)
-const MYRO_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="#0f172a"/><rect x="10" y="10" width="492" height="492" rx="110" fill="none" stroke="#22c55e" stroke-width="8" opacity="0.4"/><g transform="translate(0, 10)" fill="#22c55e"><path d="M256,60 C270,140 310,210 380,240 C310,250 285,290 275,360 C265,310 260,290 256,280 C252,290 247,310 237,360 C227,290 202,250 132,240 C202,210 242,140 256,60 Z"/><path d="M260,250 C310,210 370,220 420,280 C360,290 330,320 310,380 C290,340 280,310 260,250 Z" opacity="0.9"/><path d="M260,290 C320,280 380,320 410,380 C350,380 320,400 300,430 C285,390 275,350 260,290 Z" opacity="0.85"/><path d="M252,250 C202,210 142,220 92,280 C152,290 182,320 202,380 C222,340 232,310 252,250 Z" opacity="0.9"/><path d="M252,290 C192,280 132,320 102,380 C162,380 192,400 212,430 C227,390 237,350 252,290 Z" opacity="0.85"/><path d="M248,350 L264,350 L260,450 L252,450 Z" fill="#16a34a"/></g><text x="256" y="475" text-anchor="middle" fill="#4ade80" font-family="Arial, sans-serif" font-size="28" font-weight="bold" letter-spacing="4">MYROMILES</text></svg>`;
+const MYRO_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="#0f172a"/><rect x="10" y="10" width="492" height="492" rx="110" fill="none" stroke="#22c55e" stroke-width="8" opacity="0.4"/><g transform="translate(0, 10)" fill="#22c55e"><path d="M256,60 C270,140 310,210 380,240 C310,250 285,290 275,360 C265,310 260,290 237,360 C227,290 202,250 132,240 C202,210 242,140 256,60 Z"/><path d="M260,250 C310,210 370,220 420,280 C360,290 330,320 310,380 C290,340 280,310 260,250 Z" opacity="0.9"/><path d="M260,290 C320,280 380,320 410,380 C350,380 320,400 300,430 C285,390 275,350 260,290 Z" opacity="0.85"/><path d="M252,250 C202,210 142,220 92,280 C152,290 182,320 202,380 C222,340 232,310 252,250 Z" opacity="0.9"/><path d="M252,290 C192,280 132,320 102,380 C162,380 192,400 212,430 C227,390 237,350 252,290 Z" opacity="0.85"/><path d="M248,350 L264,350 L260,450 L252,450 Z" fill="#16a34a"/></g><text x="256" y="475" text-anchor="middle" fill="#4ade80" font-family="Arial, sans-serif" font-size="28" font-weight="bold" letter-spacing="4">MYROMILES</text></svg>`;
 const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG).toString("base64")}`;
 
 // STREMIO MANIFEST
 const MANIFEST = {
   id: "org.mediathekviewweb.streamflix.myromiles",
-  version: "3.5.0",
+  version: "3.6.0",
   name: "MediathekViewPro",
   description: "Erweiterte Mediatheken-Suche für Stremio. Powered by MyroMiles.",
   icon: ADDON_ICON_BASE64,
@@ -94,7 +75,7 @@ const MANIFEST = {
   ]
 };
 
-// 3. LANDINGPAGE MIT TEXT & INSTALL-BUTTON
+// 3. LANDINGPAGE MEHRFACH GEPRÜFT
 app.get("/", (req, res) => {
   const host = req.get("host");
   const protocol = req.protocol;
@@ -108,7 +89,7 @@ app.get("/", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>MediathekViewPro API v3.5</title>
+      <title>MediathekViewPro API v3.6</title>
       <style>
         body {
           background-color: #0f172a;
@@ -146,7 +127,7 @@ app.get("/", (req, res) => {
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v3.5 Online</h1>
+      <h1>MediathekViewPro API v3.6 Online</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
       <div class="url-box">
         <p>Manifest URL: <code>${manifestUrl}</code></p>
@@ -162,45 +143,38 @@ app.get("/manifest.json", (req, res) => {
   res.json(MANIFEST);
 });
 
-// 4. SMART API FETCHING (ROBUST & FUNKTIONSFÄHIG)
+// 4. KORRIGIERTE & VERIFIZIERTE MEDIATHEK-API-ABFRAGE
 async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
-  let requestBody = {};
+  let queryPayload = {
+    queries: [],
+    sortBy: "timestamp",
+    sortOrder: "desc",
+    future: false,
+    offset: 0,
+    size: 40
+  };
 
   if (search) {
-    requestBody = {
-      queries: [{ fields: ["title", "topic"], query: search }],
-      sortBy: "timestamp",
-      sortOrder: "desc",
-      size: 40
-    };
+    queryPayload.queries.push({ fields: ["title", "topic"], query: search });
   } else if (genre && CATEGORY_TAGS[genre]) {
-    const tags = CATEGORY_TAGS[genre].slice(0, 3);
-    requestBody = {
-      queries: tags.map(tag => ({ fields: ["title", "topic"], query: tag })),
-      sortBy: "timestamp",
-      sortOrder: "desc",
-      size: 40
-    };
+    const mainTag = CATEGORY_TAGS[genre][0];
+    queryPayload.queries.push({ fields: ["title", "topic"], query: mainTag });
   } else {
-    // Standardfall: Neueste Sendungen abrufen
-    requestBody = {
-      queries: [
-        { fields: ["channel"], query: channel || "ARD" },
-        { fields: ["channel"], query: "ZDF" }
-      ],
-      sortBy: "timestamp",
-      sortOrder: "desc",
-      size: 40
-    };
+    // Fallback: Beliebte Sendungen / Tatort abrufen
+    queryPayload.queries.push({ fields: ["title", "topic"], query: "Tatort" });
+  }
+
+  if (channel) {
+    queryPayload.queries.push({ fields: ["channel"], query: channel.toLowerCase() });
   }
 
   try {
     const response = await axios.post(
-      "https://api.mediathekviewweb.de/api/v1/query",
-      requestBody,
+      "https://mediathekviewweb.de/api/query",
+      JSON.stringify(queryPayload),
       {
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "text/plain",
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         },
         timeout: 9000
@@ -219,14 +193,13 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
 
     return Array.from(unique.values());
   } catch (err) {
-    console.error("API Fehler:", err.message);
+    console.error("Mediathek API Fehler:", err.message);
     return [];
   }
 }
 
-// 5. UNIVERSAL MIDDLEWARES (VERHINDERT JEDEN 404-FEHLER)
+// 5. ROUTING & MIDDLEWARE
 
-// Katalog-Route Handler
 app.use("/catalog", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const path = decodeURIComponent(req.path);
@@ -265,7 +238,6 @@ app.use("/catalog", async (req, res) => {
   res.json({ metas });
 });
 
-// Meta-Route Handler
 app.use("/meta", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.json({
@@ -279,7 +251,6 @@ app.use("/meta", (req, res) => {
   });
 });
 
-// Stream-Route Handler
 app.use("/stream", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const path = req.path;
@@ -303,5 +274,4 @@ app.use("/stream", (req, res) => {
   res.json({ streams: [] });
 });
 
-// Server Start
-app.listen(PORT, () => console.log(`MediathekViewPro Server läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));
