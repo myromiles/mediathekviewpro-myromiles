@@ -90,7 +90,7 @@ function getManifest(configStr = "") {
 
   return {
     id: "com.myromiles.mediathekviewpro",
-    version: "5.3.0",
+    version: "5.4.0",
     name: "MediathekViewPro (Config)",
     description: "Individuell konfigurierbare öffentlich-rechtliche Mediatheken für Stremio.",
     icon: ADDON_ICON_BASE64,
@@ -156,7 +156,6 @@ app.get("/configure", (req, res) => {
           const configBase64 = btoa(JSON.stringify(configObj)).replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
 
           const host = window.location.host;
-          const protocol = window.location.protocol;
           const stremioUrl = \`stremio://\${host}/\${configBase64}/manifest.json\`;
           
           window.location.href = stremioUrl;
@@ -240,7 +239,7 @@ async function getDynamicPoster(title, channel) {
   return defaultPoster;
 }
 
-// KATALOG ROUTE
+// KATALOG ROUTE (Mit universeller Extra-Parameter Erkennung)
 app.get("*", async (req, res, next) => {
   if (!req.path.includes("/catalog/")) return next();
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -266,14 +265,22 @@ app.get("*", async (req, res, next) => {
   let genre = "";
   let search = "";
 
-  const decodedExtra = decodeURIComponent(extraParam);
-  if (decodedExtra.includes("genre=")) {
-    const match = decodedExtra.match(/genre=([^/]+)/);
-    if (match) genre = match[1];
+  // 1. Prüfen, ob Genre/Search über Query-Parameter übergeben wurde (z.B. ?genre=...)
+  if (req.query.genre) {
+    genre = decodeURIComponent(req.query.genre);
   }
-  if (decodedExtra.includes("search=")) {
-    const match = decodedExtra.match(/search=([^/]+)/);
-    if (match) search = match[1];
+  if (req.query.search) {
+    search = decodeURIComponent(req.query.search);
+  }
+
+  // 2. Fallback: Direkt aus dem Pfad extrahieren (z.B. genre=Talk%20&%20Polit-Shows)
+  if (!genre && extraParam.includes("genre=")) {
+    const match = extraParam.match(/genre=([^/]+)/);
+    if (match) genre = decodeURIComponent(match[1]);
+  }
+  if (!search && extraParam.includes("search=")) {
+    const match = extraParam.match(/search=([^/]+)/);
+    if (match) search = decodeURIComponent(match[1]);
   }
 
   const items = await fetchSmartMediathekItems(genre, search, channel, config.limit);
@@ -338,4 +345,4 @@ app.get("*", async (req, res) => {
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Config-Server v5.3 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Config-Server v5.4 läuft auf Port ${PORT}`));
