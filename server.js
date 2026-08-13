@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// 1. Strikte CORS-Header für Stremio
+// 1. Strikte CORS-Header & Content-Type Fixes
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -15,7 +15,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 2. Absolut valides Stremio Manifest
+// 2. Stremio Manifest Konfiguration
 const MANIFEST = {
   id: "org.mediathekviewpro.myromiles",
   version: "2.2.0",
@@ -55,16 +55,24 @@ const MANIFEST = {
   ]
 };
 
-// 3. Manifest-Funktion
+// Response-Helfer für das Manifest
 const sendManifest = (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.json(MANIFEST);
 };
 
-// Alle gängigen Manifest-Pfade abdecken
+// 3. Routen: Reagiert auf /manifest.json, / UND alle Unterpfade ohne .json
 app.get("/", sendManifest);
 app.get("/manifest.json", sendManifest);
-app.get("/:anything/manifest.json", sendManifest);
+app.get("/manifest", sendManifest);
+
+// Catch-All für Stremio-Sonderwege
+app.use((req, res, next) => {
+  if (req.path.endsWith("/manifest.json") || req.path === "/manifest") {
+    return sendManifest(req, res);
+  }
+  next();
+});
 
 // 4. Katalog / Suche
 app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
@@ -126,7 +134,7 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   }
 });
 
-// 5. Stream-Route
+// 5. Streams bereitstellen
 app.get("/stream/:type/:id.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
