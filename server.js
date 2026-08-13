@@ -199,35 +199,28 @@ app.get("*", (req, res, next) => {
   
   res.json(getManifest(configStr));
 });
-
-// DYNAMISCHE API FETCH LOGIK (Unterstützt mehrere Suchbegriffe pro Kategorie)
+// DYNAMISCHE API FETCH LOGIK (Multi-Query Array für verlässliche Treffer)
 async function fetchSmartMediathekItems(searchQueries = "", channel = "", limit = 50) {
+  let subQueries = [];
+
+  if (searchQueries) {
+    const terms = searchQueries.split(",").map(t => t.trim()).filter(Boolean);
+    // Für jeden Begriff ein eigenes Suchobjekt anlegen (garantiert Treffer)
+    terms.forEach(term => {
+      subQueries.push({ fields: ["title", "topic"], query: term });
+    });
+  } else {
+    subQueries.push({ fields: ["title"], query: "a" });
+  }
+
   let queryPayload = {
-    queries: [],
+    queries: subQueries,
     sortBy: "timestamp",
     sortOrder: "desc",
     future: false,
     offset: 0,
     size: parseInt(limit) || 50
   };
-
-  if (searchQueries) {
-    // Wenn mehrere Begriffe durch Komma getrennt sind, übergeben wir sie als Array (ODER-Verknüpfung)
-    const terms = searchQueries.split(",").map(t => t.trim()).filter(Boolean);
-    if (terms.length > 1) {
-      // Wir suchen nach Beiträgen, die einen dieser Begriffe im Titel oder Thema enthalten
-      queryPayload.queries.push({
-        fields: ["title", "topic"],
-        query: terms.join(" | ")
-      });
-    } else if (terms.length === 1) {
-      queryPayload.queries.push({ fields: ["title", "topic"], query: terms[0] });
-    } else {
-      queryPayload.queries.push({ fields: ["title"], query: "a" });
-    }
-  } else {
-    queryPayload.queries.push({ fields: ["title"], query: "a" });
-  }
 
   if (channel) {
     queryPayload.queries.push({ fields: ["channel"], query: channel.toLowerCase() });
