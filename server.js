@@ -4,12 +4,9 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// CORS
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  if (req.method === "OPTIONS") return res.status(200).end();
   next();
 });
 
@@ -28,46 +25,53 @@ function decodeId(id) { return Buffer.from(id.replace("mvw:", "").replace(".json
 
 function parseConfig(configStr) {
   try {
-    if (!configStr || configStr === "manifest.json") return { limit: 50, channels: ["ard", "zdf", "arte", "3sat"], mapping: DEFAULT_CATEGORY_MAPPING };
     return JSON.parse(Buffer.from(configStr, "base64url").toString("utf-8"));
   } catch (e) { return { limit: 50, channels: ["ard", "zdf", "arte", "3sat"], mapping: DEFAULT_CATEGORY_MAPPING }; }
 }
 
-function getManifest(configStr) {
-  const config = parseConfig(configStr);
-  const catalogs = config.channels.map(ch => ({
-    type: "movie", id: `mediathek_${ch}`, name: `${ch.toUpperCase()} Mediathek`,
-    extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: Object.keys(config.mapping) }]
-  }));
-  return { id: "com.myromiles.mediathekviewpro", version: "5.6.0", name: "MediathekViewPro", icon: ADDON_ICON_BASE64, resources: ["catalog", "meta", "stream"], types: ["movie"], catalogs };
-}
-
-// API CALL
+// NEUE, PRÄZISE API LOGIK
 async function fetchSmartMediathekItems(search, channel, limit) {
   try {
-    const response = await axios.post("https://mediathekviewweb.de/api/query", {
-      queries: [{ fields: ["title", "topic"], query: search || "a" }, { fields: ["channel"], query: channel || "" }],
+    const payload = {
+      queries: [],
       sortBy: "timestamp", sortOrder: "desc", size: limit
-    }, { headers: { "Content-Type": "application/json" } });
+    };
+    
+    // Suche verfeinern
+    if (search) {
+      payload.queries.push({ fields: ["title", "topic"], query: search });
+    }
+    // Kanal separat als Bedingung
+    if (channel && channel !== "all") {
+      payload.queries.push({ fields: ["channel"], query: channel });
+    }
+
+    const response = await axios.post("https://mediathekviewweb.de/api/query", payload);
     return response.data?.result?.results || [];
   } catch (e) { return []; }
 }
 
-// ROUTES
-app.get("/configure", (req, res) => {
-  res.send(`<h1>Konfigurator</h1><a href="/configure">Bitte über App/Stremio konfigurieren</a>`);
+app.get("/:config?/manifest.json", (req, res) => {
+  const config = parseConfig(req.params.config || "");
+  res.json({
+    id: "com.myromiles.mediathekviewpro", version: "5.7.0", name: "MediathekViewPro",
+    resources: ["catalog", "meta", "stream"], types: ["movie"],
+    catalogs: config.channels.map(ch => ({
+      type: "movie", id: `mediathek_${ch}`, name: `${ch.toUpperCase()} Mediathek`,
+      extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: Object.keys(config.mapping || DEFAULT_CATEGORY_MAPPING) }]
+    }))
+  });
 });
 
-app.get("/:config?/manifest.json", (req, res) => res.json(getManifest(req.params.config)));
-
 app.get("/:config?/catalog/:type/:id/:extra?.json", async (req, res) => {
-  const config = parseConfig(req.params.config);
+  const config = parseConfig(req.params.config || "");
   const genre = req.query.genre || "";
   const search = req.query.search || "";
   const channel = req.params.id.replace("mediathek_", "");
   
-  const searchFor = search || (genre ? config.mapping[genre] : "");
-  const items = await fetchSmartMediathekItems(searchFor, channel === "all" ? "" : channel, config.limit);
+  const searchFor = search || (genre ? (config.mapping || DEFAULT_CATEGORY_MAPPING)[genre] : "");
+  
+  const items = await fetchSmartMediathekItems(searchFor, channel, config.limit);
 
   res.json({ metas: items.map(item => ({
     id: encodeId(item.url_video_hd || item.url_video),
@@ -76,12 +80,7 @@ app.get("/:config?/catalog/:type/:id/:extra?.json", async (req, res) => {
   })) });
 });
 
-app.get("/:config?/meta/:type/:id.json", (req, res) => {
-  res.json({ meta: { id: req.params.id, type: "movie", name: "Mediathek Video", poster: ADDON_ICON_BASE64 } });
-});
+app.get("/:config?/meta/:type/:id.json", (req, res) => res.json({ meta: { id: req.params.id, type: "movie", name: "Video", poster: ADDON_ICON_BASE64 } }));
+app.get("/:config?/stream/:type/:id.json", (req, res) => res.json({ streams: [{ title: "Stream", url: decodeId(req.params.id) }] }));
 
-app.get("/:config?/stream/:type/:id.json", (req, res) => {
-  res.json({ streams: [{ title: "Stream", url: decodeId(req.params.id) }] });
-});
-
-app.listen(PORT, () => console.log(`Server v5.6 auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server v5.7 läuft`));
