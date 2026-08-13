@@ -12,7 +12,6 @@ const CATEGORY_MAP = {
 
 const ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiI+PHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMjAiIGZpbGw9IiMwZjE3MmEiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLCAxMCkiIGZpbGw9IiMyMmM1NWUiPjxwYXRoIGQ9Ik0yNTYsNjAgQzI3MCwxNDAgMzEwLDIxMCAzODAsMjQwIEMzMTAsMjUwIDI4NSwyOTAgMjc1LDM2MCBDMjY1LDMxMCAyNjAsMjkwIDIzNywzNjAgQzIyNywyOTAgMjAyLDI1MCAxMzIsMjQwIEMyMDIsMjEwIDI0MiwxNDAgMjU2LDYwIFoiLz48L2c+PC9zdmc+";
 
-// CORS für alle Anfragen erlauben
 app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
@@ -41,7 +40,8 @@ async function fetchItems(genre, channel) {
             sortOrder: "desc",
             size: 50
         }, {
-            headers: { "Content-Type": "application/json" }
+            headers: { "Content-Type": "application/json" },
+            timeout: 8000
         });
         return res.data?.result?.results || [];
     } catch (e) {
@@ -50,11 +50,10 @@ async function fetchItems(genre, channel) {
     }
 }
 
-// Stremio Manifest
 app.get("/manifest.json", (req, res) => {
     res.json({
         id: "org.mediathek.pro",
-        version: "1.3.0",
+        version: "1.4.0",
         name: "MediathekView Pro",
         description: "Öffentlich-rechtliche Mediatheken für Stremio",
         resources: ["catalog", "meta", "stream"],
@@ -68,7 +67,6 @@ app.get("/manifest.json", (req, res) => {
     });
 });
 
-// Katalog Route
 app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
     const catalogId = req.params.id;
     let channel = "all";
@@ -77,7 +75,7 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
     else if (catalogId.includes("arte")) channel = "arte";
 
     const genre = req.query.genre ? decodeURIComponent(req.query.genre) : "";
-    console.lade(`Lade Katalog: ${catalogId} | Genre: ${genre}`);
+    console.log(`Lade Katalog: ${catalogId} | Genre: ${genre}`);
 
     const items = await fetchItems(genre, channel);
 
