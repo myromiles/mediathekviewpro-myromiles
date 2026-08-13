@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// 1. Strikte CORS-Header & Content-Type Fixes
+// CORS-Header setzen
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -15,7 +15,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 2. Stremio Manifest Konfiguration
+// Stremio Manifest Konfiguration
 const MANIFEST = {
   id: "org.mediathekviewpro.myromiles",
   version: "2.2.0",
@@ -55,30 +55,21 @@ const MANIFEST = {
   ]
 };
 
-// Response-Helfer für das Manifest
 const sendManifest = (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.json(MANIFEST);
 };
 
-// 3. Routen: Reagiert auf /manifest.json, / UND alle Unterpfade ohne .json
+// Manifest Routen
 app.get("/", sendManifest);
 app.get("/manifest.json", sendManifest);
-app.get("/manifest", sendManifest);
 
-// Catch-All für Stremio-Sonderwege
-app.use((req, res, next) => {
-  if (req.path.endsWith("/manifest.json") || req.path === "/manifest") {
-    return sendManifest(req, res);
-  }
-  next();
-});
-
-// 4. Katalog / Suche
-app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
+// KATALOG ROUTE (Fängt jetzt ALLE Varianten ab!)
+app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
-    const extra = req.params.extra ? parseExtraParams(req.params.extra) : {};
+    const extraStr = req.params.extra || "";
+    const extra = parseExtraParams(extraStr);
     const genre = extra.genre || "Alle";
     const skip = parseInt(extra.skip, 10) || 0;
 
@@ -134,7 +125,7 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   }
 });
 
-// 5. Streams bereitstellen
+// STREAM ROUTE
 app.get("/stream/:type/:id.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
