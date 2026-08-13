@@ -4,14 +4,18 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// CORS-Header für Stremio / Streamflix setzen
+// CORS-Header setzen (PFLICHT für Stremio)
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
   next();
 });
 
-// Stremio Manifest Konfiguration
+// Stremio Manifest Konfiguration (Streng valide)
 const MANIFEST = {
   id: "org.mediathekviewpro.myromiles",
   version: "2.2.0",
@@ -51,7 +55,7 @@ const MANIFEST = {
   ]
 };
 
-// 1. Hauptpfade (Löst das "Cannot GET"-Problem auf Render.com)
+// 1. Hauptpfade für Stremio / Streamflix
 app.get("/", (req, res) => res.json(MANIFEST));
 app.get("/manifest.json", (req, res) => res.json(MANIFEST));
 
@@ -60,7 +64,7 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   try {
     const extra = req.params.extra ? parseExtraParams(req.params.extra) : {};
     const genre = extra.genre || "Neueste Beiträge";
-    const skip = parseInt(extra.skip) || 0;
+    const skip = parseInt(extra.skip, 10) || 0;
 
     let queryPayload = {
       queries: [
@@ -76,7 +80,6 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
       size: 50
     };
 
-    // Sender-Filter anwenden
     if (["ARD Mediathek", "ZDF Mediathek", "Arte DE", "3sat"].includes(genre)) {
       const channelMap = {
         "ARD Mediathek": "ARD",
@@ -100,7 +103,8 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
     const items = response.data?.result?.results || [];
 
     const metas = items.map((item) => {
-      const uniqueId = `mvp:${Buffer.from(item.url_video || item.title).toString("base64")}`;
+      const videoUrl = item.url_video || item.title || "https://example.com";
+      const uniqueId = `mvp:${Buffer.from(videoUrl).toString("base64")}`;
       const channelName = item.channel ? `[${item.channel}] ` : "";
       
       return {
@@ -113,9 +117,11 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
       };
     });
 
+    res.setHeader("Content-Type", "application/json");
     res.json({ metas });
   } catch (err) {
     console.error("Katalog-Fehler:", err.message);
+    res.setHeader("Content-Type", "application/json");
     res.json({ metas: [] });
   }
 });
@@ -126,6 +132,7 @@ app.get("/stream/:type/:id.json", async (req, res) => {
     const rawId = req.params.id.replace("mvp:", "");
     const videoUrl = Buffer.from(rawId, "base64").toString("utf-8");
 
+    res.setHeader("Content-Type", "application/json");
     if (videoUrl && videoUrl.startsWith("http")) {
       res.json({
         streams: [
@@ -140,6 +147,7 @@ app.get("/stream/:type/:id.json", async (req, res) => {
     }
   } catch (err) {
     console.error("Stream-Fehler:", err.message);
+    res.setHeader("Content-Type", "application/json");
     res.json({ streams: [] });
   }
 });
@@ -147,7 +155,12 @@ app.get("/stream/:type/:id.json", async (req, res) => {
 // Hilfsfunktionen
 function parseExtraParams(extraStr) {
   const params = {};
-  extraStr.split("&").forEach((pair) => {
+  if (!extraStr) return params;
+  
+  // Entfernt die .json Endung falls Stremio sie am Ende der URL anhängt
+  const cleanStr = extraStr.replace(/\.json$/, "");
+  
+  cleanStr.split("&").forEach((pair) => {
     const [key, val] = pair.split("=");
     if (key && val) params[key] = decodeURIComponent(val);
   });
