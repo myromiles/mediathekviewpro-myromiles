@@ -43,7 +43,7 @@ function decodeId(id) {
   return Buffer.from(clean, "base64url").toString("utf-8");
 }
 
-// HILSFUNKTION: PARST DIE CONFIG AUS DER URL (z.B. /configJson/manifest.json)
+// PARST DIE CONFIG AUS DER URL
 function parseConfig(configStr) {
   try {
     if (!configStr) return getDefaultConfig();
@@ -61,7 +61,7 @@ function getDefaultConfig() {
   };
 }
 
-// 2. MANIFEST GENERATOR (Dynamisch basierend auf Config)
+// 2. MANIFEST GENERATOR
 function getManifest(configStr = "") {
   const config = parseConfig(configStr);
   const genreList = config.tags ? config.tags.split(",").map(t => t.trim()).filter(Boolean) : Object.keys(DEFAULT_CATEGORY_TAGS);
@@ -89,7 +89,7 @@ function getManifest(configStr = "") {
 
   return {
     id: "com.myromiles.mediathekviewpro",
-    version: "5.0.0",
+    version: "5.1.0",
     name: "MediathekViewPro (Config)",
     description: "Individuell konfigurierbare öffentlich-rechtliche Mediatheken für Stremio.",
     icon: ADDON_ICON_BASE64,
@@ -106,7 +106,7 @@ function getManifest(configStr = "") {
 
 // 3. ROUTEN
 
-// KONFIGURATIONSMASKE (Webseite im Browser/Stremio)
+// KONFIGURATIONSMASKE
 app.get("/configure", (req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`
@@ -166,17 +166,16 @@ app.get("/configure", (req, res) => {
   `);
 });
 
-// STANDARD LANDINGPAGE
+// LANDINGPAGE
 app.get("/", (req, res) => {
   res.redirect("/configure");
 });
 
 // MANIFEST MIT ODER OHNE CONFIG
-app.get("/:config?.?/manifest.json", (req, res) => {
+app.get(/^(?:\/([^/]+))?\/manifest\.json$/, (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const configStr = req.params.config;
-  // Wenn der erste Parameter "manifest.json" ist direkt ohne config aufrufen
-  if (configStr === "manifest.json" || !configStr) {
+  const configStr = req.params[0];
+  if (!configStr || configStr === "manifest.json") {
     return res.json(getManifest(""));
   }
   res.json(getManifest(configStr));
@@ -226,7 +225,7 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "", l
   }
 }
 
-// DYNAMISCHES POSTER
+// POSTER HELPER
 async function getDynamicPoster(title, channel) {
   const chName = (channel || "").toLowerCase().trim();
   let defaultPoster = ADDON_ICON_BASE64;
@@ -236,29 +235,34 @@ async function getDynamicPoster(title, channel) {
   return defaultPoster;
 }
 
-// KATALOG ROUTE (Mit Config-Auswertung)
-app.get("/:config?.?/catalog/:type/:id/:extra?.json", async (req, res) => {
+// KATALOG ROUTE
+app.get(/^(?:\/([^/]+))?\/catalog\/([^/]+)\/([^/]+)\/(?:([^/]+)\.json)?$/, async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   
-  const { id } = req.params;
-  const configStr = req.params.config !== "catalog" ? req.params.config : "";
+  const configStr = req.params[0] && req.params[0] !== "catalog" ? req.params[0] : "";
+  const type = req.params[1];
+  const id = req.params[2];
+  const extraParam = req.params[3] || "";
+
   const config = parseConfig(configStr);
-  const rawPath = decodeURIComponent(req.path);
 
   let channel = "";
   if (id.includes("ard")) channel = "ARD";
-  if (id.includes("zdf")) channel = "ZDF";
-  if (id.includes("arte")) channel = "ARTE";
-  if (id.includes("3sat")) channel = "3sat";
+  else if (id.includes("zdf")) channel = "ZDF";
+  else if (id.includes("arte")) channel = "ARTE";
+  else if (id.includes("3sat")) channel = "3sat";
 
   let genre = "";
   let search = "";
 
-  const genreMatch = rawPath.match(/genre=([^/.]+)/);
-  if (genreMatch) genre = genreMatch[1];
-
-  const searchMatch = rawPath.match(/search=([^/.]+)/);
-  if (searchMatch) search = searchMatch[1];
+  if (extraParam.includes("genre=")) {
+    const match = extraParam.match(/genre=([^/]+)/);
+    if (match) genre = decodeURIComponent(match[1]);
+  }
+  if (extraParam.includes("search=")) {
+    const match = extraParam.match(/search=([^/]+)/);
+    if (match) search = decodeURIComponent(match[1]);
+  }
 
   const items = await fetchSmartMediathekItems(genre, search, channel, config.limit);
 
@@ -281,9 +285,9 @@ app.get("/:config?.?/catalog/:type/:id/:extra?.json", async (req, res) => {
 });
 
 // META ROUTE
-app.get("/:config?.?/meta/:type/:id.json", (req, res) => {
+app.get(/^(?:\/([^/]+))?\/meta\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const { id } = req.params;
+  const id = req.params[2];
   try {
     const originalUrl = decodeId(id);
     res.json({
@@ -300,9 +304,9 @@ app.get("/:config?.?/meta/:type/:id.json", (req, res) => {
 });
 
 // STREAM ROUTE
-app.get("/:config?.?/stream/:type/:id.json", (req, res) => {
+app.get(/^(?:\/([^/]+))?\/stream\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const { id } = req.params;
+  const id = req.params[2];
   try {
     const streamUrl = decodeId(id);
     if (streamUrl && streamUrl.startsWith("http")) {
@@ -312,4 +316,4 @@ app.get("/:config?.?/stream/:type/:id.json", (req, res) => {
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Config-Server v5.0 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Config-Server v5.1 läuft auf Port ${PORT}`));
