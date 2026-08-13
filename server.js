@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// 1. STRIKTE CORS-HEADER (Behebt NetworkError im Stremio-Validator & Web Client)
+// 1. CORS-HEADER (Behebt NetworkError & Preflight-Anfragen in Stremio)
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
@@ -16,7 +16,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 2. KATEGORIEN & SMART-TAGS
+// 2. KATEGORIEN & SMART-TAGS (Suche & Dropdowns)
 const CATEGORY_TAGS = {
   "Talk & Polit-Shows": ["Markus Lanz", "Caren Miosga", "Maischberger", "Hart aber fair", "maybrit illner"],
   "Satire & Comedy": ["heute-show", "ZDF Magazin Royale", "extra 3", "Die Anstalt"],
@@ -30,49 +30,49 @@ const CATEGORY_TAGS = {
 
 const GENRE_LIST = Object.keys(CATEGORY_TAGS);
 
-// ICON (Clean Base64 SVG)
+// ICON (Clean SVG Base64)
 const MYRO_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="#0f172a"/><g transform="translate(0, 10)" fill="#22c55e"><path d="M256,60 C270,140 310,210 380,240 C310,250 285,290 275,360 C265,310 260,290 237,360 C227,290 202,250 132,240 C202,210 242,140 256,60 Z"/></g></svg>`;
 const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG).toString("base64")}`;
 
-// 3. STREMIO MANIFEST (Community Specification Ready)
+// 3. STREMIO MANIFEST
 const MANIFEST = {
   id: "com.myromiles.mediathekviewpro",
-  version: "4.1.0",
+  version: "4.2.0",
   name: "MediathekViewPro",
   description: "Deutsche öffentlich-rechtliche Mediatheken (ARD, ZDF, Arte, 3sat) direkt in Stremio streamen.",
   icon: ADDON_ICON_BASE64,
   resources: ["catalog", "meta", "stream"],
-  types: ["movie"],
+  types: ["movie", "series"],
   idPrefixes: ["mvw:"],
   catalogs: [
     {
       type: "movie",
       id: "mediathek_all",
-      name: "Mediathek: Alle Sender",
+      name: "Mediathek: Neueste Inhalte",
       extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
     },
     {
       type: "movie",
       id: "mediathek_ard",
-      name: "Mediathek: ARD",
+      name: "ARD: Neueste Beiträge",
       extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
     },
     {
       type: "movie",
       id: "mediathek_zdf",
-      name: "Mediathek: ZDF",
+      name: "ZDF: Neueste Beiträge",
       extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
     },
     {
       type: "movie",
       id: "mediathek_arte",
-      name: "Mediathek: Arte",
+      name: "Arte: Neueste Beiträge",
       extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
     },
     {
       type: "movie",
       id: "mediathek_3sat",
-      name: "Mediathek: 3sat",
+      name: "3sat: Neueste Beiträge",
       extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
     }
   ],
@@ -116,9 +116,9 @@ app.get("/", (req, res) => {
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v4.1</h1>
+      <h1>MediathekViewPro API v4.2</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
-      <p style="color:#94a3b8;">Manifest URL für den Validator:</p>
+      <p style="color:#94a3b8;">Manifest URL:</p>
       <p><code>${manifestUrl}</code></p>
     </body>
     </html>
@@ -131,7 +131,7 @@ app.get("/manifest.json", (req, res) => {
   res.json(MANIFEST);
 });
 
-// MEDIATHEK API FETCH
+// MEDIATHEK API FETCH LOGIK
 async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   let queryPayload = {
     queries: [],
@@ -227,39 +227,37 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   res.json({ metas });
 });
 
-// META ROUTE
+// META ROUTE (Dynamisch für Detailansicht & Video-Fenster)
 app.get("/meta/:type/:id.json", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const { id } = req.params;
 
-  res.json({
-    meta: {
-      id: id,
-      type: "movie",
-      name: "Mediathek Beitrag",
-      poster: ADDON_ICON_BASE64,
-      description: "Öffentlich-rechtlicher Mediatheken-Stream."
-    }
-  });
-});
-
-// STREAM ROUTE
-app.get("/stream/:type/:id.json", (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const { id } = req.params;
-
   try {
-    const streamUrl = decodeId(id);
-    if (streamUrl && streamUrl.startsWith("http")) {
-      return res.json({
-        streams: [{ name: "MediathekView", title: "Direktstream (HD)", url: streamUrl }]
-      });
-    }
+    // Versuche, die Web-URL aus der mvw-ID zu dekodieren
+    const originalUrl = decodeId(id);
+    
+    // Falls eine gültige URL vorhanden ist, nutze sie als Titel/Hinweis
+    res.json({
+      meta: {
+        id: id,
+        type: "movie",
+        name: "Mediathek Stream",
+        poster: ADDON_ICON_BASE64,
+        background: ADDON_ICON_BASE64,
+        description: `Stream-Link: ${originalUrl}\n\nKlicke unten auf das Addon-Symbol, um das Video zu starten.`,
+        genres: ["Mediathek"]
+      }
+    });
   } catch (e) {
-    console.error("Fehler beim Dekodieren der Stream-ID:", e);
+    // Fallback falls ID nicht dekodiert werden kann
+    res.json({
+      meta: {
+        id: id,
+        type: "movie",
+        name: "Mediathek Beitrag",
+        poster: ADDON_ICON_BASE64,
+        description: "Beitrag aus der öffentlich-rechtlichen Mediathek."
+      }
+    });
   }
-
-  res.json({ streams: [] });
 });
-
-app.listen(PORT, () => console.log(`Server v4.1 läuft auf Port ${PORT}`));
