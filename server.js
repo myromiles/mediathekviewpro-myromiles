@@ -34,7 +34,7 @@ const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG
 // STREMIO MANIFEST
 const MANIFEST = {
   id: "org.mediathekviewweb.streamflix.myromiles",
-  version: "3.6.0",
+  version: "3.7.0",
   name: "MediathekViewPro",
   description: "Erweiterte Mediatheken-Suche für Stremio. Powered by MyroMiles.",
   icon: ADDON_ICON_BASE64,
@@ -75,7 +75,7 @@ const MANIFEST = {
   ]
 };
 
-// 3. LANDINGPAGE MEHRFACH GEPRÜFT
+// 3. LANDINGPAGE
 app.get("/", (req, res) => {
   const host = req.get("host");
   const protocol = req.protocol;
@@ -89,7 +89,7 @@ app.get("/", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>MediathekViewPro API v3.6</title>
+      <title>MediathekViewPro API v3.7</title>
       <style>
         body {
           background-color: #0f172a;
@@ -127,7 +127,7 @@ app.get("/", (req, res) => {
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v3.6 Online</h1>
+      <h1>MediathekViewPro API v3.7 Online</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
       <div class="url-box">
         <p>Manifest URL: <code>${manifestUrl}</code></p>
@@ -143,7 +143,7 @@ app.get("/manifest.json", (req, res) => {
   res.json(MANIFEST);
 });
 
-// 4. KORRIGIERTE & VERIFIZIERTE MEDIATHEK-API-ABFRAGE
+// 4. API FETCHING
 async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   let queryPayload = {
     queries: [],
@@ -160,7 +160,6 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
     const mainTag = CATEGORY_TAGS[genre][0];
     queryPayload.queries.push({ fields: ["title", "topic"], query: mainTag });
   } else {
-    // Fallback: Beliebte Sendungen / Tatort abrufen
     queryPayload.queries.push({ fields: ["title", "topic"], query: "Tatort" });
   }
 
@@ -200,6 +199,7 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
 
 // 5. ROUTING & MIDDLEWARE
 
+// KATALOG
 app.use("/catalog", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const path = decodeURIComponent(req.path);
@@ -238,19 +238,29 @@ app.use("/catalog", async (req, res) => {
   res.json({ metas });
 });
 
+// META (Dynamisch auf Anfrage reagieren)
 app.use("/meta", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  const path = req.path;
+  const match = path.match(/mvw:([^./]+)/);
+
+  let reqId = "mvw:default";
+  if (match && match[1]) {
+    reqId = "mvw:" + match[1];
+  }
+
   res.json({
     meta: {
-      id: "mvw:default",
+      id: reqId,
       type: "movie",
       name: "Mediathek Beitrag",
       poster: ADDON_ICON_BASE64,
-      description: "Beitrag aus den öffentlich-rechtlichen Mediatheken."
+      description: "Öffentlich-rechtlicher Mediatheken-Stream."
     }
   });
 });
 
+// STREAM (Extrahiert Direct Video Link)
 app.use("/stream", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   const path = req.path;
@@ -265,13 +275,19 @@ app.use("/stream", (req, res) => {
     console.error("ID-Decoding Fehler:", e);
   }
 
-  if (decodedUrl.startsWith("http")) {
+  if (decodedUrl && decodedUrl.startsWith("http")) {
     return res.json({
-      streams: [{ name: "MyroMiles Mediathek", title: "Direct Stream (MP4)", url: decodedUrl }]
+      streams: [
+        {
+          name: "Mediathek",
+          title: "Direct MP4 Stream (HD)",
+          url: decodedUrl
+        }
+      ]
     });
   }
 
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server v3.7 läuft auf Port ${PORT}`));
