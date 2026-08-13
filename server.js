@@ -34,7 +34,7 @@ const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG
 // STREMIO MANIFEST
 const MANIFEST = {
   id: "org.mediathekviewweb.streamflix.myromiles",
-  version: "3.7.0",
+  version: "3.8.0",
   name: "MediathekViewPro",
   description: "Erweiterte Mediatheken-Suche für Stremio. Powered by MyroMiles.",
   icon: ADDON_ICON_BASE64,
@@ -75,6 +75,16 @@ const MANIFEST = {
   ]
 };
 
+// HELPER FOR URL-SAFE ENCODING
+function encodeId(url) {
+  return "mvw:" + Buffer.from(url).toString("base64url");
+}
+
+function decodeId(id) {
+  const clean = id.replace("mvw:", "").replace(".json", "");
+  return Buffer.from(clean, "base64url").toString("utf-8");
+}
+
 // 3. LANDINGPAGE
 app.get("/", (req, res) => {
   const host = req.get("host");
@@ -89,7 +99,7 @@ app.get("/", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>MediathekViewPro API v3.7</title>
+      <title>MediathekViewPro API v3.8</title>
       <style>
         body {
           background-color: #0f172a;
@@ -127,7 +137,7 @@ app.get("/", (req, res) => {
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v3.7 Online</h1>
+      <h1>MediathekViewPro API v3.8 Online</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
       <div class="url-box">
         <p>Manifest URL: <code>${manifestUrl}</code></p>
@@ -197,35 +207,35 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   }
 }
 
-// 5. ROUTING & MIDDLEWARE
+// 5. EXPLIZITES STREMIO ROUTING
 
-// KATALOG
-app.use("/catalog", async (req, res) => {
+// KATALOG ROUTE
+app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const path = decodeURIComponent(req.path);
+  
+  const { id, extra } = req.params;
 
   let channel = "";
-  if (path.includes("mediathek_ard")) channel = "ARD";
-  if (path.includes("mediathek_zdf")) channel = "ZDF";
-  if (path.includes("mediathek_arte")) channel = "ARTE";
-  if (path.includes("mediathek_3sat")) channel = "3sat";
+  if (id.includes("ard")) channel = "ARD";
+  if (id.includes("zdf")) channel = "ZDF";
+  if (id.includes("arte")) channel = "ARTE";
+  if (id.includes("3sat")) channel = "3sat";
 
   let genre = "";
-  const genreMatch = path.match(/genre=([^/.]+)/);
-  if (genreMatch) genre = genreMatch[1];
-
   let search = "";
-  const searchMatch = path.match(/search=([^/.]+)/);
-  if (searchMatch) search = searchMatch[1];
+
+  if (extra) {
+    const params = new URLSearchParams(extra);
+    if (params.has("genre")) genre = params.get("genre");
+    if (params.has("search")) search = params.get("search");
+  }
 
   const items = await fetchSmartMediathekItems(genre, search, channel);
 
   const metas = items.map(item => {
-    const targetUrl = item.url_video_hd || item.url_video || item.url_video_low || item.title;
-    const cleanId = "mvw:" + Buffer.from(targetUrl).toString("hex");
-
+    const targetUrl = item.url_video_hd || item.url_video || item.url_video_low;
     return {
-      id: cleanId,
+      id: encodeId(targetUrl),
       type: "movie",
       name: item.title || "Mediathek Beitrag",
       poster: ADDON_ICON_BASE64,
@@ -238,20 +248,14 @@ app.use("/catalog", async (req, res) => {
   res.json({ metas });
 });
 
-// META (Dynamisch auf Anfrage reagieren)
-app.use("/meta", (req, res) => {
+// META ROUTE
+app.get("/meta/:type/:id.json", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const path = req.path;
-  const match = path.match(/mvw:([^./]+)/);
-
-  let reqId = "mvw:default";
-  if (match && match[1]) {
-    reqId = "mvw:" + match[1];
-  }
+  const { id } = req.params;
 
   res.json({
     meta: {
-      id: reqId,
+      id: id,
       type: "movie",
       name: "Mediathek Beitrag",
       poster: ADDON_ICON_BASE64,
@@ -260,34 +264,58 @@ app.use("/meta", (req, res) => {
   });
 });
 
-// STREAM (Extrahiert Direct Video Link)
-app.use("/stream", (req, res) => {
+// STREAM ROUTE
+app.get("/stream/:type/:id.json", (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const path = req.path;
-  const match = path.match(/mvw:([^./]+)/);
+  const { id } = req.params;
 
-  if (!match || !match[1]) return res.json({ streams: [] });
-
-  let decodedUrl = "";
   try {
-    decodedUrl = Buffer.from(match[1], "hex").toString("utf-8");
-  } catch (e) {
-    console.error("ID-Decoding Fehler:", e);
-  }
+    const streamUrl = decodeId(id);
 
-  if (decodedUrl && decodedUrl.startsWith("http")) {
-    return res.json({
-      streams: [
-        {
-          name: "Mediathek",
-          title: "Direct MP4 Stream (HD)",
-          url: decodedUrl
-        }
-      ]
-    });
+    if (streamUrl && streamUrl.startsWith("http")) {
+      return res.json({
+        streams: [
+          {
+            name: "MediathekView",
+            title: "Direktstream (HD)",
+            url: streamUrl
+          }
+        ]
+      });
+    }
+  } catch (e) {
+    console.error("Fehler beim Dekodieren der Stream-ID:", e);
   }
 
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Server v3.7 läuft auf Port ${PORT}`));
+// CATCH-ALL ROUTE FÜR ANDERE STREAM-ANFRAGEN
+app.use("/stream", (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  const path = req.path;
+  const rawId = path.split("/").pop();
+
+  if (rawId && rawId.startsWith("mvw:")) {
+    try {
+      const streamUrl = decodeId(rawId);
+      if (streamUrl && streamUrl.startsWith("http")) {
+        return res.json({
+          streams: [
+            {
+              name: "MediathekView",
+              title: "Direktstream (HD)",
+              url: streamUrl
+            }
+          ]
+        });
+      }
+    } catch (e) {
+      console.error("Fehler im Fallback-Stream:", e);
+    }
+  }
+
+  res.json({ streams: [] });
+});
+
+app.listen(PORT, () => console.log(`Server v3.8 läuft auf Port ${PORT}`));
