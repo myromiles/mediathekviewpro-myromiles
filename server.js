@@ -46,8 +46,9 @@ function decodeId(id) {
 // PARST DIE CONFIG AUS DER URL
 function parseConfig(configStr) {
   try {
-    if (!configStr) return getDefaultConfig();
-    return JSON.parse(Buffer.from(configStr, "base64url").toString("utf-8"));
+    if (!configStr || configStr === "manifest.json" || configStr === "catalog") return getDefaultConfig();
+    const jsonStr = Buffer.from(configStr, "base64url").toString("utf-8");
+    return JSON.parse(jsonStr);
   } catch (e) {
     return getDefaultConfig();
   }
@@ -89,7 +90,7 @@ function getManifest(configStr = "") {
 
   return {
     id: "com.myromiles.mediathekviewpro",
-    version: "5.1.0",
+    version: "5.3.0",
     name: "MediathekViewPro (Config)",
     description: "Individuell konfigurierbare öffentlich-rechtliche Mediatheken für Stremio.",
     icon: ADDON_ICON_BASE64,
@@ -171,13 +172,17 @@ app.get("/", (req, res) => {
   res.redirect("/configure");
 });
 
-// MANIFEST MIT ODER OHNE CONFIG
-app.get(/^(?:\/([^/]+))?\/manifest\.json$/, (req, res) => {
+// MANIFEST ROUTE
+app.get("*", (req, res, next) => {
+  if (!req.path.endsWith("/manifest.json")) return next();
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const configStr = req.params[0];
-  if (!configStr || configStr === "manifest.json") {
-    return res.json(getManifest(""));
+  
+  const parts = req.path.split("/").filter(Boolean);
+  let configStr = "";
+  if (parts.length > 1 && parts[parts.length - 1] === "manifest.json" && parts[0] !== "manifest.json") {
+    configStr = parts[0];
   }
+  
   res.json(getManifest(configStr));
 });
 
@@ -235,25 +240,20 @@ async function getDynamicPoster(title, channel) {
   return defaultPoster;
 }
 
-// KATALOG ROUTE (Robust gegen alle Stremio-Pfad-Variationen)
+// KATALOG ROUTE
 app.get("*", async (req, res, next) => {
   if (!req.path.includes("/catalog/")) return next();
-  
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  
-  const pathParts = req.path.split("/").filter(Boolean);
-  // Pfad-Struktur analysieren: 
-  // Entweder: [config, "catalog", type, id, extra] oder ["catalog", type, id, extra]
+
+  const parts = req.path.split("/").filter(Boolean);
   let configStr = "";
-  let catalogIndex = pathParts.indexOf("catalog");
-  
-  if (catalogIndex > 0) {
-    configStr = pathParts[catalogIndex - 1];
+  let catalogIdx = parts.indexOf("catalog");
+  if (catalogIdx > 0) {
+    configStr = parts[catalogIdx - 1];
   }
-  
-  const type = pathParts[catalogIndex + 1];
-  const id = pathParts[catalogIndex + 2];
-  const extraParam = pathParts[catalogIndex + 3] || "";
+
+  const id = parts[catalogIdx + 2] || "";
+  const extraParam = parts[catalogIdx + 3] || "";
 
   const config = parseConfig(configStr);
 
@@ -296,53 +296,15 @@ app.get("*", async (req, res, next) => {
   res.json({ metas });
 });
 
-// META ROUTE (Universeller Fallback)
+// META ROUTE
 app.get("*", async (req, res, next) => {
   if (!req.path.includes("/meta/")) return next();
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  
-  const pathParts = req.path.split("/").filter(Boolean);
-  const idWithExt = pathParts[pathParts.length - 1];
+
+  const parts = req.path.split("/").filter(Boolean);
+  const idWithExt = parts[parts.length - 1];
   const id = idWithExt.replace(".json", "");
 
-  try {
-    const originalUrl = decodeId(id);
-    res.json({
-      meta: {
-        id: id, type: "movie", name: "Mediathek Stream",
-        poster: ADDON_ICON_BASE64, background: ADDON_ICON_BASE64,
-        description: `Stream-Link: ${originalUrl}\n\nKlicke unten auf den Stream, um das Video zu starten.`,
-        genres: ["Mediathek"]
-      }
-    });
-  } catch (e) {
-    res.json({ meta: { id: id, type: "movie", name: "Mediathek Beitrag", poster: ADDON_ICON_BASE64, description: "Öffentlicher Stream." } });
-  }
-});
-
-// STREAM ROUTE (Universeller Fallback)
-app.get("*", async (req, res, next) => {
-  if (!req.path.includes("/stream/")) return next();
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  
-  const pathParts = req.path.split("/").filter(Boolean);
-  const idWithExt = pathParts[pathParts.length - 1];
-  const id = idWithExt.replace(".json", "");
-
-  try {
-    const streamUrl = decodeId(id);
-    if (streamUrl && streamUrl.startsWith("http")) {
-      return res.json({ streams: [{ name: "MediathekView", title: "Direktstream (HD)", url: streamUrl }] });
-    }
-  } catch (e) {}
-  res.json({ streams: [] });
-});
-
-app.listen(PORT, () => console.log(`Config-Server v5.2 läuft auf Port ${PORT}`));
-// META ROUTE
-app.get(/^(?:\/([^/]+))?\/meta\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const id = req.params[2];
   try {
     const originalUrl = decodeId(id);
     res.json({
@@ -359,9 +321,14 @@ app.get(/^(?:\/([^/]+))?\/meta\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
 });
 
 // STREAM ROUTE
-app.get(/^(?:\/([^/]+))?\/stream\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
+app.get("*", async (req, res) => {
+  if (!req.path.includes("/stream/")) return res.status(404).send("Not Found");
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const id = req.params[2];
+
+  const parts = req.path.split("/").filter(Boolean);
+  const idWithExt = parts[parts.length - 1];
+  const id = idWithExt.replace(".json", "");
+
   try {
     const streamUrl = decodeId(id);
     if (streamUrl && streamUrl.startsWith("http")) {
@@ -371,4 +338,4 @@ app.get(/^(?:\/([^/]+))?\/stream\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Config-Server v5.1 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Config-Server v5.3 läuft auf Port ${PORT}`));
