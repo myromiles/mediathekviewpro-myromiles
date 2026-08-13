@@ -235,14 +235,25 @@ async function getDynamicPoster(title, channel) {
   return defaultPoster;
 }
 
-// KATALOG ROUTE
-app.get(/^(?:\/([^/]+))?\/catalog\/([^/]+)\/([^/]+)\/(?:([^/]+)\.json)?$/, async (req, res) => {
+// KATALOG ROUTE (Robust gegen alle Stremio-Pfad-Variationen)
+app.get("*", async (req, res, next) => {
+  if (!req.path.includes("/catalog/")) return next();
+  
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   
-  const configStr = req.params[0] && req.params[0] !== "catalog" ? req.params[0] : "";
-  const type = req.params[1];
-  const id = req.params[2];
-  const extraParam = req.params[3] || "";
+  const pathParts = req.path.split("/").filter(Boolean);
+  // Pfad-Struktur analysieren: 
+  // Entweder: [config, "catalog", type, id, extra] oder ["catalog", type, id, extra]
+  let configStr = "";
+  let catalogIndex = pathParts.indexOf("catalog");
+  
+  if (catalogIndex > 0) {
+    configStr = pathParts[catalogIndex - 1];
+  }
+  
+  const type = pathParts[catalogIndex + 1];
+  const id = pathParts[catalogIndex + 2];
+  const extraParam = pathParts[catalogIndex + 3] || "";
 
   const config = parseConfig(configStr);
 
@@ -255,13 +266,14 @@ app.get(/^(?:\/([^/]+))?\/catalog\/([^/]+)\/([^/]+)\/(?:([^/]+)\.json)?$/, async
   let genre = "";
   let search = "";
 
-  if (extraParam.includes("genre=")) {
-    const match = extraParam.match(/genre=([^/]+)/);
-    if (match) genre = decodeURIComponent(match[1]);
+  const decodedExtra = decodeURIComponent(extraParam);
+  if (decodedExtra.includes("genre=")) {
+    const match = decodedExtra.match(/genre=([^/]+)/);
+    if (match) genre = match[1];
   }
-  if (extraParam.includes("search=")) {
-    const match = extraParam.match(/search=([^/]+)/);
-    if (match) search = decodeURIComponent(match[1]);
+  if (decodedExtra.includes("search=")) {
+    const match = decodedExtra.match(/search=([^/]+)/);
+    if (match) search = match[1];
   }
 
   const items = await fetchSmartMediathekItems(genre, search, channel, config.limit);
@@ -284,6 +296,49 @@ app.get(/^(?:\/([^/]+))?\/catalog\/([^/]+)\/([^/]+)\/(?:([^/]+)\.json)?$/, async
   res.json({ metas });
 });
 
+// META ROUTE (Universeller Fallback)
+app.get("*", async (req, res, next) => {
+  if (!req.path.includes("/meta/")) return next();
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  
+  const pathParts = req.path.split("/").filter(Boolean);
+  const idWithExt = pathParts[pathParts.length - 1];
+  const id = idWithExt.replace(".json", "");
+
+  try {
+    const originalUrl = decodeId(id);
+    res.json({
+      meta: {
+        id: id, type: "movie", name: "Mediathek Stream",
+        poster: ADDON_ICON_BASE64, background: ADDON_ICON_BASE64,
+        description: `Stream-Link: ${originalUrl}\n\nKlicke unten auf den Stream, um das Video zu starten.`,
+        genres: ["Mediathek"]
+      }
+    });
+  } catch (e) {
+    res.json({ meta: { id: id, type: "movie", name: "Mediathek Beitrag", poster: ADDON_ICON_BASE64, description: "Öffentlicher Stream." } });
+  }
+});
+
+// STREAM ROUTE (Universeller Fallback)
+app.get("*", async (req, res, next) => {
+  if (!req.path.includes("/stream/")) return next();
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  
+  const pathParts = req.path.split("/").filter(Boolean);
+  const idWithExt = pathParts[pathParts.length - 1];
+  const id = idWithExt.replace(".json", "");
+
+  try {
+    const streamUrl = decodeId(id);
+    if (streamUrl && streamUrl.startsWith("http")) {
+      return res.json({ streams: [{ name: "MediathekView", title: "Direktstream (HD)", url: streamUrl }] });
+    }
+  } catch (e) {}
+  res.json({ streams: [] });
+});
+
+app.listen(PORT, () => console.log(`Config-Server v5.2 läuft auf Port ${PORT}`));
 // META ROUTE
 app.get(/^(?:\/([^/]+))?\/meta\/([^/]+)\/([^/]+)\.json$/, (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
