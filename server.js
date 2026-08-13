@@ -4,16 +4,19 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// 1. CORS-HEADER (Pflicht für Stremio)
+// 1. STRIKTE CORS-HEADER (Behebt NetworkError im Stremio-Validator & Web Client)
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
+  
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
   next();
 });
 
-// 2. KATEGORIEN & SMART-TAGS (Verknüpfte Suchwörter pro Genre)
+// 2. KATEGORIEN & SMART-TAGS
 const CATEGORY_TAGS = {
   "Talk & Polit-Shows": ["Markus Lanz", "Caren Miosga", "Maischberger", "Hart aber fair", "maybrit illner"],
   "Satire & Comedy": ["heute-show", "ZDF Magazin Royale", "extra 3", "Die Anstalt"],
@@ -27,16 +30,16 @@ const CATEGORY_TAGS = {
 
 const GENRE_LIST = Object.keys(CATEGORY_TAGS);
 
-// CANNBLATT-ICON (Base64 SVG)
-const MYRO_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="#0f172a"/><rect x="10" y="10" width="492" height="492" rx="110" fill="none" stroke="#22c55e" stroke-width="8" opacity="0.4"/><g transform="translate(0, 10)" fill="#22c55e"><path d="M256,60 C270,140 310,210 380,240 C310,250 285,290 275,360 C265,310 260,290 237,360 C227,290 202,250 132,240 C202,210 242,140 256,60 Z"/><path d="M260,250 C310,210 370,220 420,280 C360,290 330,320 310,380 C290,340 280,310 260,250 Z" opacity="0.9"/><path d="M260,290 C320,280 380,320 410,380 C350,380 320,400 300,430 C285,390 275,350 260,290 Z" opacity="0.85"/><path d="M252,250 C202,210 142,220 92,280 C152,290 182,320 202,380 C222,340 232,310 252,250 Z" opacity="0.9"/><path d="M252,290 C192,280 132,320 102,380 C162,380 192,400 212,430 C227,390 237,350 252,290 Z" opacity="0.85"/><path d="M248,350 L264,350 L260,450 L252,450 Z" fill="#16a34a"/></g><text x="256" y="475" text-anchor="middle" fill="#4ade80" font-family="Arial, sans-serif" font-size="28" font-weight="bold" letter-spacing="4">MYROMILES</text></svg>`;
+// ICON (Clean Base64 SVG)
+const MYRO_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><rect width="512" height="512" rx="120" fill="#0f172a"/><g transform="translate(0, 10)" fill="#22c55e"><path d="M256,60 C270,140 310,210 380,240 C310,250 285,290 275,360 C265,310 260,290 237,360 C227,290 202,250 132,240 C202,210 242,140 256,60 Z"/></g></svg>`;
 const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG).toString("base64")}`;
 
-// STREMIO MANIFEST
+// 3. STREMIO MANIFEST (Community Specification Ready)
 const MANIFEST = {
-  id: "org.mediathekviewweb.streamflix.myromiles",
-  version: "3.9.0",
+  id: "com.myromiles.mediathekviewpro",
+  version: "4.1.0",
   name: "MediathekViewPro",
-  description: "Erweiterte Mediatheken-Suche für Stremio. Powered by MyroMiles.",
+  description: "Deutsche öffentlich-rechtliche Mediatheken (ARD, ZDF, Arte, 3sat) direkt in Stremio streamen.",
   icon: ADDON_ICON_BASE64,
   resources: ["catalog", "meta", "stream"],
   types: ["movie"],
@@ -72,10 +75,14 @@ const MANIFEST = {
       name: "Mediathek: 3sat",
       extra: [{ name: "search", isRequired: false }, { name: "genre", isRequired: false, options: GENRE_LIST }]
     }
-  ]
+  ],
+  behaviorHints: {
+    configurable: false,
+    configurationRequired: false
+  }
 };
 
-// HELFER FÜR URL-SICHERE CODIERUNG
+// HELPER FÜR URL-ENCODING
 function encodeId(url) {
   return "mvw:" + Buffer.from(url).toString("base64url");
 }
@@ -85,7 +92,9 @@ function decodeId(id) {
   return Buffer.from(clean, "base64url").toString("utf-8");
 }
 
-// 3. LANDINGPAGE
+// 4. ROUTEN
+
+// LANDINGPAGE
 app.get("/", (req, res) => {
   const host = req.get("host");
   const protocol = req.protocol;
@@ -98,50 +107,19 @@ app.get("/", (req, res) => {
     <html lang="de">
     <head>
       <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>MediathekViewPro API v3.9</title>
+      <title>MediathekViewPro API</title>
       <style>
-        body {
-          background-color: #0f172a;
-          color: #f8fafc;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100vh;
-          margin: 0;
-          text-align: center;
-        }
-        h1 { font-size: 2rem; margin-bottom: 20px; color: #4ade80; }
-        .btn {
-          display: inline-block;
-          background-color: #22c55e;
-          color: #0f172a;
-          font-weight: bold;
-          font-size: 1.2rem;
-          padding: 15px 32px;
-          border-radius: 8px;
-          text-decoration: none;
-          transition: background-color 0.2s ease, transform 0.1s ease;
-          box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
-        }
-        .btn:hover { background-color: #16a34a; color: #ffffff; transform: translateY(-2px); }
-        .url-box {
-          margin-top: 25px;
-          font-size: 0.9rem;
-          color: #94a3b8;
-          word-break: break-all;
-          max-width: 80%;
-        }
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+        h1 { color: #4ade80; }
+        .btn { background-color: #22c55e; color: #0f172a; font-weight: bold; padding: 15px 32px; border-radius: 8px; text-decoration: none; display: inline-block; margin-bottom: 20px; }
+        code { background-color: #1e293b; padding: 6px 12px; border-radius: 4px; color: #38bdf8; }
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v3.9 Online</h1>
+      <h1>MediathekViewPro API v4.1</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
-      <div class="url-box">
-        <p>Manifest URL: <code>${manifestUrl}</code></p>
-      </div>
+      <p style="color:#94a3b8;">Manifest URL für den Validator:</p>
+      <p><code>${manifestUrl}</code></p>
     </body>
     </html>
   `);
@@ -153,7 +131,7 @@ app.get("/manifest.json", (req, res) => {
   res.json(MANIFEST);
 });
 
-// 4. API FETCHING MIT DYNAMISCHER SUCHE & GENRE-VERARBEITUNG
+// MEDIATHEK API FETCH
 async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   let queryPayload = {
     queries: [],
@@ -164,24 +142,18 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
     size: 40
   };
 
-  // 1. Wenn der Nutzer nach einem Suchbegriff sucht
   if (search) {
     queryPayload.queries.push({ fields: ["title", "topic"], query: search });
-  } 
-  // 2. Wenn der Nutzer ein Genre / Dropdown-Menü ausgewählt hat
-  else if (genre && CATEGORY_TAGS[genre]) {
+  } else if (genre && CATEGORY_TAGS[genre]) {
     const tags = CATEGORY_TAGS[genre];
     tags.forEach(tag => {
       queryPayload.queries.push({ fields: ["title", "topic"], query: tag });
     });
-  } 
-  // 3. Standardfall (Keine Suche, kein Genre gewählt)
-  else {
+  } else {
     queryPayload.queries.push({ fields: ["title", "topic"], query: "Tagesschau" });
     queryPayload.queries.push({ fields: ["title", "topic"], query: "Tatort" });
   }
 
-  // Sender-Filter anwenden
   if (channel) {
     queryPayload.queries.push({ fields: ["channel"], query: channel.toLowerCase() });
   }
@@ -200,8 +172,6 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
     );
 
     let raw = response.data?.result?.results || [];
-
-    // Duplikate filtern
     const unique = new Map();
     raw.forEach(item => {
       const link = item.url_video_hd || item.url_video || item.url_video_low;
@@ -217,15 +187,13 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   }
 }
 
-// 5. STREMIO KATALOG ROUTE MIT DYNAMISCHER PARSER-LOGIK
-
+// KATALOG ROUTE
 app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   
   const { id } = req.params;
   const rawPath = decodeURIComponent(req.path);
 
-  // Sender identifizieren
   let channel = "";
   if (id.includes("ard")) channel = "ARD";
   if (id.includes("zdf")) channel = "ZDF";
@@ -235,16 +203,11 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   let genre = "";
   let search = "";
 
-  // Stremio hängt Parameter wie /genre=Krimi%20%26%20Tatort.json oder /search=Lanz.json an.
   const genreMatch = rawPath.match(/genre=([^/.]+)/);
-  if (genreMatch) {
-    genre = genreMatch[1];
-  }
+  if (genreMatch) genre = genreMatch[1];
 
   const searchMatch = rawPath.match(/search=([^/.]+)/);
-  if (searchMatch) {
-    search = searchMatch[1];
-  }
+  if (searchMatch) search = searchMatch[1];
 
   const items = await fetchSmartMediathekItems(genre, search, channel);
 
@@ -287,16 +250,9 @@ app.get("/stream/:type/:id.json", (req, res) => {
 
   try {
     const streamUrl = decodeId(id);
-
     if (streamUrl && streamUrl.startsWith("http")) {
       return res.json({
-        streams: [
-          {
-            name: "MediathekView",
-            title: "Direktstream (HD)",
-            url: streamUrl
-          }
-        ]
+        streams: [{ name: "MediathekView", title: "Direktstream (HD)", url: streamUrl }]
       });
     }
   } catch (e) {
@@ -306,32 +262,4 @@ app.get("/stream/:type/:id.json", (req, res) => {
   res.json({ streams: [] });
 });
 
-// CATCH-ALL ROUTE FÜR ANDERE STREAM-ANFRAGEN
-app.use("/stream", (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const path = req.path;
-  const rawId = path.split("/").pop();
-
-  if (rawId && rawId.startsWith("mvw:")) {
-    try {
-      const streamUrl = decodeId(rawId);
-      if (streamUrl && streamUrl.startsWith("http")) {
-        return res.json({
-          streams: [
-            {
-              name: "MediathekView",
-              title: "Direktstream (HD)",
-              url: streamUrl
-            }
-          ]
-        });
-      }
-    } catch (e) {
-      console.error("Fehler im Fallback-Stream:", e);
-    }
-  }
-
-  res.json({ streams: [] });
-});
-
-app.listen(PORT, () => console.log(`Server v3.9 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server v4.1 läuft auf Port ${PORT}`));
