@@ -13,13 +13,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Standard-Tags
-const DEFAULT_CATEGORY_TAGS = {
-  "Talk & Polit-Shows": ["Markus Lanz", "Caren Miosga", "Maischberger", "Hart aber fair", "maybrit illner"],
-  "Satire & Comedy": ["heute-show", "ZDF Magazin Royale", "extra 3", "Die Anstalt"],
-  "Krimi & Tatort": ["Tatort", "Polizeiruf", "SOKO", "Der Alte", "Wilsberg"],
-  "Dokumentation & Wissen": ["Doku", "Reportage", "Terra X", "Quarks", "Weltspiegel"],
-  "Nachrichten & Magazine": ["tagesschau", "tagesthemen", "heute journal", "brisant"]
+// Erweiterte Zuordnung: Kategorie-Name -> Echte Suchbegriffe für die Mediathek-API
+const DEFAULT_CATEGORY_MAPPING = {
+  "Talk & Polit-Shows": "Markus Lanz, Caren Miosga, Maischberger, Hart aber fair, maybrit illner",
+  "Satire & Comedy": "heute-show, ZDF Magazin Royale, extra 3, Die Anstalt, neo royale",
+  "Krimi & Tatort": "Tatort, Polizeiruf, SOKO, Der Alte, Wilsberg, Tatort Leipzig",
+  "Dokumentation & Wissen": "Doku, Reportage, Terra X, Quarks, Weltspiegel, 30 Minuten",
+  "Nachrichten & Magazine": "tagesschau, tagesthemen, heute journal, brisant, aspekte"
 };
 
 // ICON
@@ -58,14 +58,15 @@ function getDefaultConfig() {
   return {
     limit: 50,
     channels: ["ard", "zdf", "arte", "3sat"],
-    tags: Object.keys(DEFAULT_CATEGORY_TAGS).join(",")
+    mapping: DEFAULT_CATEGORY_MAPPING
   };
 }
 
 // 2. MANIFEST GENERATOR
 function getManifest(configStr = "") {
   const config = parseConfig(configStr);
-  const genreList = config.tags ? config.tags.split(",").map(t => t.trim()).filter(Boolean) : Object.keys(DEFAULT_CATEGORY_TAGS);
+  const mapping = config.mapping || DEFAULT_CATEGORY_MAPPING;
+  const genreList = Object.keys(mapping);
 
   let catalogs = [];
   if (config.channels.includes("all") || config.channels.length > 1) {
@@ -90,7 +91,7 @@ function getManifest(configStr = "") {
 
   return {
     id: "com.myromiles.mediathekviewpro",
-    version: "5.4.0",
+    version: "5.5.0",
     name: "MediathekViewPro (Config)",
     description: "Individuell konfigurierbare öffentlich-rechtliche Mediatheken für Stremio.",
     icon: ADDON_ICON_BASE64,
@@ -117,13 +118,14 @@ app.get("/configure", (req, res) => {
       <meta charset="UTF-8">
       <title>MediathekViewPro Konfiguration</title>
       <style>
-        body { background: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+        body { background: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 20px; max-width: 650px; margin: auto; }
         h1 { color: #4ade80; text-align: center; }
         label { display: block; margin-top: 15px; font-weight: bold; color: #38bdf8; }
         input, textarea { width: 100%; padding: 10px; margin-top: 5px; background: #1e293b; border: 1px solid #334155; color: white; border-radius: 6px; box-sizing: border-box; }
         .checkbox-group { display: flex; gap: 15px; margin-top: 5px; flex-wrap: wrap; }
         .checkbox-group label { font-weight: normal; color: white; display: flex; align-items: center; gap: 5px; cursor: pointer; }
         button { background: #22c55e; color: #0f172a; font-weight: bold; width: 100%; padding: 15px; border: none; border-radius: 8px; margin-top: 30px; font-size: 16px; cursor: pointer; }
+        .hint { font-size: 12px; color: #94a3b8; margin-top: 2px; }
       </style>
     </head>
     <body>
@@ -140,8 +142,13 @@ app.get("/configure", (req, res) => {
           <label><input type="checkbox" name="channel" value="3sat" checked> 3sat</label>
         </div>
 
-        <label>Kategorien / Such-Tags (mit Komma getrennt):</label>
-        <textarea id="tags" rows="4">Talk & Polit-Shows, Satire & Comedy, Krimi & Tatort, Dokumentation & Wissen, Nachrichten & Magazine</textarea>
+        <label>Kategorien & Suchbegriffe (Format: Kategorie = Suchwort1, Suchwort2):</label>
+        <textarea id="mappingText" rows="6">Talk & Polit-Shows = Markus Lanz, Caren Miosga, Maischberger, Hart aber fair
+Satire & Comedy = heute-show, ZDF Magazin Royale, extra 3, Die Anstalt
+Krimi & Tatort = Tatort, Polizeiruf, SOKO, Der Alte, Wilsberg
+Dokumentation & Wissen = Doku, Reportage, Terra X, Quarks
+Nachrichten & Magazine = tagesschau, tagesthemen, heute journal, brisant</textarea>
+        <div class="hint">Links der Name in Stremio, rechts die Begriffe, nach denen in der Mediathek gesucht wird (mit Komma getrennt).</div>
 
         <button type="button" onclick="installAddon()">In Stremio installieren</button>
       </form>
@@ -150,9 +157,17 @@ app.get("/configure", (req, res) => {
         function installAddon() {
           const limit = document.getElementById('limit').value;
           const channels = Array.from(document.querySelectorAll('input[name="channel"]:checked')).map(el => el.value);
-          const tags = document.getElementById('tags').value;
+          const rawText = document.getElementById('mappingText').value;
 
-          const configObj = { limit, channels, tags };
+          const mapping = {};
+          rawText.split('\\n').forEach(line => {
+            if (line.includes('=')) {
+              const parts = line.split('=');
+              mapping[parts[0].trim()] = parts[1].trim();
+            }
+          });
+
+          const configObj = { limit, channels, mapping };
           const configBase64 = btoa(JSON.stringify(configObj)).replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
 
           const host = window.location.host;
@@ -185,8 +200,8 @@ app.get("*", (req, res, next) => {
   res.json(getManifest(configStr));
 });
 
-// DYNAMISCHE API FETCH LOGIK
-async function fetchSmartMediathekItems(genre = "", search = "", channel = "", limit = 50) {
+// DYNAMISCHE API FETCH LOGIK (Unterstützt mehrere Suchbegriffe pro Kategorie)
+async function fetchSmartMediathekItems(searchQueries = "", channel = "", limit = 50) {
   let queryPayload = {
     queries: [],
     sortBy: "timestamp",
@@ -196,10 +211,20 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "", l
     size: parseInt(limit) || 50
   };
 
-  if (search) {
-    queryPayload.queries.push({ fields: ["title", "topic"], query: search });
-  } else if (genre) {
-    queryPayload.queries.push({ fields: ["title", "topic"], query: genre });
+  if (searchQueries) {
+    // Wenn mehrere Begriffe durch Komma getrennt sind, übergeben wir sie als Array (ODER-Verknüpfung)
+    const terms = searchQueries.split(",").map(t => t.trim()).filter(Boolean);
+    if (terms.length > 1) {
+      // Wir suchen nach Beiträgen, die einen dieser Begriffe im Titel oder Thema enthalten
+      queryPayload.queries.push({
+        fields: ["title", "topic"],
+        query: terms.join(" | ")
+      });
+    } else if (terms.length === 1) {
+      queryPayload.queries.push({ fields: ["title", "topic"], query: terms[0] });
+    } else {
+      queryPayload.queries.push({ fields: ["title"], query: "a" });
+    }
   } else {
     queryPayload.queries.push({ fields: ["title"], query: "a" });
   }
@@ -239,7 +264,7 @@ async function getDynamicPoster(title, channel) {
   return defaultPoster;
 }
 
-// KATALOG ROUTE (Mit universeller Extra-Parameter Erkennung)
+// KATALOG ROUTE
 app.get("*", async (req, res, next) => {
   if (!req.path.includes("/catalog/")) return next();
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -255,6 +280,7 @@ app.get("*", async (req, res, next) => {
   const extraParam = parts[catalogIdx + 3] || "";
 
   const config = parseConfig(configStr);
+  const mapping = config.mapping || DEFAULT_CATEGORY_MAPPING;
 
   let channel = "";
   if (id.includes("ard")) channel = "ARD";
@@ -265,15 +291,9 @@ app.get("*", async (req, res, next) => {
   let genre = "";
   let search = "";
 
-  // 1. Prüfen, ob Genre/Search über Query-Parameter übergeben wurde (z.B. ?genre=...)
-  if (req.query.genre) {
-    genre = decodeURIComponent(req.query.genre);
-  }
-  if (req.query.search) {
-    search = decodeURIComponent(req.query.search);
-  }
+  if (req.query.genre) genre = decodeURIComponent(req.query.genre);
+  if (req.query.search) search = decodeURIComponent(req.query.search);
 
-  // 2. Fallback: Direkt aus dem Pfad extrahieren (z.B. genre=Talk%20&%20Polit-Shows)
   if (!genre && extraParam.includes("genre=")) {
     const match = extraParam.match(/genre=([^/]+)/);
     if (match) genre = decodeURIComponent(match[1]);
@@ -283,7 +303,15 @@ app.get("*", async (req, res, next) => {
     if (match) search = decodeURIComponent(match[1]);
   }
 
-  const items = await fetchSmartMediathekItems(genre, search, channel, config.limit);
+  // Ermittle die echten Suchbegriffe anhand des Mapping-Werts der Kategorie
+  let searchQueriesToUse = search;
+  if (!searchQueriesToUse && genre && mapping[genre]) {
+    searchQueriesToUse = mapping[genre];
+  } else if (!searchQueriesToUse && genre) {
+    searchQueriesToUse = genre; // Fallback falls kein Mapping existiert
+  }
+
+  const items = await fetchSmartMediathekItems(searchQueriesToUse, channel, config.limit);
 
   const metas = await Promise.all(items.map(async item => {
     const targetUrl = item.url_video_hd || item.url_video || item.url_video_low;
@@ -345,4 +373,4 @@ app.get("*", async (req, res) => {
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Config-Server v5.4 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Config-Server v5.5 läuft auf Port ${PORT}`));
