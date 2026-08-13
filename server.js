@@ -55,7 +55,7 @@ const CHANNEL_LOGOS = {
 // 3. STREMIO MANIFEST
 const MANIFEST = {
   id: "com.myromiles.mediathekviewpro",
-  version: "4.3.0",
+  version: "4.4.0",
   name: "MediathekViewPro",
   description: "Deutsche öffentlich-rechtliche Mediatheken (ARD, ZDF, Arte, 3sat) direkt in Stremio streamen.",
   icon: ADDON_ICON_BASE64,
@@ -110,7 +110,7 @@ function decodeId(id) {
   return Buffer.from(clean, "base64url").toString("utf-8");
 }
 
-// DYNAMISCHE POSTER-SUCHE (Lösung B)
+// DYNAMISCHE POSTER-SUCHE
 async function getDynamicPoster(title, topic, channel) {
   const chName = (channel || "").toLowerCase().trim();
   let defaultPoster = ADDON_ICON_BASE64;
@@ -131,7 +131,7 @@ async function getDynamicPoster(title, topic, channel) {
       return img;
     }
   } catch (err) {
-    // Bei Timeout Fallback nutzen
+    // Fallback auf Sender-Logo bei Timeout
   }
 
   return defaultPoster;
@@ -161,7 +161,7 @@ app.get("/", (req, res) => {
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v4.3</h1>
+      <h1>MediathekViewPro API v4.4</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
       <p style="color:#94a3b8;">Manifest URL:</p>
       <p><code>${manifestUrl}</code></p>
@@ -176,7 +176,7 @@ app.get("/manifest.json", (req, res) => {
   res.json(MANIFEST);
 });
 
-// MEDIATHEK API FETCH LOGIK (Erweitert: 100 Beiträge + Globale Neueste-Suche)
+// MEDIATHEK API FETCH LOGIK (Fehlerfrei mit text/plain und sicherem Standard)
 async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   let queryPayload = {
     queries: [],
@@ -195,7 +195,7 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
       queryPayload.queries.push({ fields: ["title", "topic"], query: tag });
     });
   } else {
-    queryPayload.queries.push({ fields: ["title"], query: "*" });
+    queryPayload.queries.push({ fields: ["title"], query: "a" });
   }
 
   if (channel) {
@@ -203,17 +203,16 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   }
 
   try {
-    const response = await axios.post(
-      "https://mediathekviewweb.de/api/query",
-      JSON.stringify(queryPayload),
-      {
-        headers: {
-          "Content-Type": "text/plain",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        },
-        timeout: 9000
-      }
-    );
+    const response = await axios({
+      method: "post",
+      url: "https://mediathekviewweb.de/api/query",
+      data: JSON.stringify(queryPayload),
+      headers: {
+        "Content-Type": "text/plain",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      },
+      timeout: 10000
+    });
 
     let raw = response.data?.result?.results || [];
     const unique = new Map();
@@ -323,4 +322,4 @@ app.get("/stream/:type/:id.json", (req, res) => {
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Server v4.3 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server v4.4 läuft auf Port ${PORT}`));
