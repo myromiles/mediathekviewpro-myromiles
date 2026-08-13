@@ -13,7 +13,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 2. KATEGORIEN & SMART-TAGS
+// 2. KATEGORIEN & SMART-TAGS (Verknüpfte Suchwörter pro Genre)
 const CATEGORY_TAGS = {
   "Talk & Polit-Shows": ["Markus Lanz", "Caren Miosga", "Maischberger", "Hart aber fair", "maybrit illner"],
   "Satire & Comedy": ["heute-show", "ZDF Magazin Royale", "extra 3", "Die Anstalt"],
@@ -34,7 +34,7 @@ const ADDON_ICON_BASE64 = `data:image/svg+xml;base64,${Buffer.from(MYRO_ICON_SVG
 // STREMIO MANIFEST
 const MANIFEST = {
   id: "org.mediathekviewweb.streamflix.myromiles",
-  version: "3.8.0",
+  version: "3.9.0",
   name: "MediathekViewPro",
   description: "Erweiterte Mediatheken-Suche für Stremio. Powered by MyroMiles.",
   icon: ADDON_ICON_BASE64,
@@ -75,7 +75,7 @@ const MANIFEST = {
   ]
 };
 
-// HELPER FOR URL-SAFE ENCODING
+// HELFER FÜR URL-SICHERE CODIERUNG
 function encodeId(url) {
   return "mvw:" + Buffer.from(url).toString("base64url");
 }
@@ -99,7 +99,7 @@ app.get("/", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>MediathekViewPro API v3.8</title>
+      <title>MediathekViewPro API v3.9</title>
       <style>
         body {
           background-color: #0f172a;
@@ -137,7 +137,7 @@ app.get("/", (req, res) => {
       </style>
     </head>
     <body>
-      <h1>MediathekViewPro API v3.8 Online</h1>
+      <h1>MediathekViewPro API v3.9 Online</h1>
       <a class="btn" href="${stremioUrl}">In Stremio Installieren</a>
       <div class="url-box">
         <p>Manifest URL: <code>${manifestUrl}</code></p>
@@ -153,7 +153,7 @@ app.get("/manifest.json", (req, res) => {
   res.json(MANIFEST);
 });
 
-// 4. API FETCHING
+// 4. API FETCHING MIT DYNAMISCHER SUCHE & GENRE-VERARBEITUNG
 async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   let queryPayload = {
     queries: [],
@@ -164,15 +164,24 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
     size: 40
   };
 
+  // 1. Wenn der Nutzer nach einem Suchbegriff sucht
   if (search) {
     queryPayload.queries.push({ fields: ["title", "topic"], query: search });
-  } else if (genre && CATEGORY_TAGS[genre]) {
-    const mainTag = CATEGORY_TAGS[genre][0];
-    queryPayload.queries.push({ fields: ["title", "topic"], query: mainTag });
-  } else {
+  } 
+  // 2. Wenn der Nutzer ein Genre / Dropdown-Menü ausgewählt hat
+  else if (genre && CATEGORY_TAGS[genre]) {
+    const tags = CATEGORY_TAGS[genre];
+    tags.forEach(tag => {
+      queryPayload.queries.push({ fields: ["title", "topic"], query: tag });
+    });
+  } 
+  // 3. Standardfall (Keine Suche, kein Genre gewählt)
+  else {
+    queryPayload.queries.push({ fields: ["title", "topic"], query: "Tagesschau" });
     queryPayload.queries.push({ fields: ["title", "topic"], query: "Tatort" });
   }
 
+  // Sender-Filter anwenden
   if (channel) {
     queryPayload.queries.push({ fields: ["channel"], query: channel.toLowerCase() });
   }
@@ -192,6 +201,7 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
 
     let raw = response.data?.result?.results || [];
 
+    // Duplikate filtern
     const unique = new Map();
     raw.forEach(item => {
       const link = item.url_video_hd || item.url_video || item.url_video_low;
@@ -207,14 +217,15 @@ async function fetchSmartMediathekItems(genre = "", search = "", channel = "") {
   }
 }
 
-// 5. EXPLIZITES STREMIO ROUTING
+// 5. STREMIO KATALOG ROUTE MIT DYNAMISCHER PARSER-LOGIK
 
-// KATALOG ROUTE
 app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   
-  const { id, extra } = req.params;
+  const { id } = req.params;
+  const rawPath = decodeURIComponent(req.path);
 
+  // Sender identifizieren
   let channel = "";
   if (id.includes("ard")) channel = "ARD";
   if (id.includes("zdf")) channel = "ZDF";
@@ -224,10 +235,15 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
   let genre = "";
   let search = "";
 
-  if (extra) {
-    const params = new URLSearchParams(extra);
-    if (params.has("genre")) genre = params.get("genre");
-    if (params.has("search")) search = params.get("search");
+  // Stremio hängt Parameter wie /genre=Krimi%20%26%20Tatort.json oder /search=Lanz.json an.
+  const genreMatch = rawPath.match(/genre=([^/.]+)/);
+  if (genreMatch) {
+    genre = genreMatch[1];
+  }
+
+  const searchMatch = rawPath.match(/search=([^/.]+)/);
+  if (searchMatch) {
+    search = searchMatch[1];
   }
 
   const items = await fetchSmartMediathekItems(genre, search, channel);
@@ -318,4 +334,4 @@ app.use("/stream", (req, res) => {
   res.json({ streams: [] });
 });
 
-app.listen(PORT, () => console.log(`Server v3.8 läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server v3.9 läuft auf Port ${PORT}`));
