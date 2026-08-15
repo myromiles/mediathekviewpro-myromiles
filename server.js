@@ -10,7 +10,7 @@ const CATEGORY_MAP = {
     "Comedy & Satire": "heute-show"
 };
 
-const ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiI+PHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMjAiIGZpbGw9IiMwZjE3MmEiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLCAxMCkiIGZpbGw9IiMyMmM1NWUiPjxwYXRoIGQ9Ik0yNTYsNjAgQzI3MCwxNDAgMzEwLDIxMCAzODAsMjQwIEMzMTAsMjUwIDI4NSwyOTAgMjc1LDM2MCBDMjY1LDMxMCAyNjAsMjkwIDIzNywzNjAgQzIyNywyOTAgMjAyLDI1MCAxMzIsMjQwIEMyMDIsMjEwIDI0MiwxNDAgMjU2LDYwIFoiLz48L2c+PC9zdmc+";
+const ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiI+PHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMjAiIGZpbGw9IiMwZjE3MmEiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLCAxMCkgZmlsbD0iIzIyYzU1ZSI+PHBhdGggZD0iTTI1Niw2MCBDMjcwLDE0MCAzMTAsMjEwIDM4MCwyNDAgQzMxMCwyNTAgMjg1LDI5MCAyNzUsMzYwIEMyNjUsMzEwIDI2MCwyOTAgMjM3LDM2MCBDMjI3LDI5MCAyMDIsMjUwIDEzMiwyNDAgQzIwMiwyMTAgMjQyLDE0MCAyNTYsNjAgWiIvPjwvZz48L3N2Zz4=";
 
 app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -75,7 +75,7 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
     else if (catalogId.includes("arte")) channel = "arte";
 
     const genre = req.query.genre ? decodeURIComponent(req.query.genre) : "";
-    console.log(`Lade Katalog: ${catalogId} | Genre: ${genre}`);
+    console.log(`Lade Katalog: ${catalogId} \vert{} Genre:${genre}`);
 
     const items = await fetchItems(genre, channel);
 
